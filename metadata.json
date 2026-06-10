@@ -1,0 +1,8 @@
+{
+  "name": "Lazuardi Mitra Hub Dashboard",
+  "description": "Dashboard interaktif monitoring laporan keuangan, status pengiriman, dan audit untuk sekolah mitra Lazuardi Group.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
