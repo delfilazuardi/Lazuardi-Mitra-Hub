@@ -1,19 +1,59 @@
 import React, { useState, useMemo } from "react";
 import { Invoice, UserSession } from "../types";
-import { FileText, Search, CreditCard, Check, AlertCircle, TrendingUp, DollarSign, ArrowUpRight } from "lucide-react";
+import { FileText, Search, CreditCard, Check, AlertCircle, TrendingUp, DollarSign, ArrowUpRight, Plus, X } from "lucide-react";
 import { motion } from "motion/react";
 
 interface InvoiceProps {
   invoices: Invoice[];
   session: UserSession;
+  schools?: string[];
   onUpdateInvoiceStatus?: (id: string, newStatus: "Lunas" | "Belum Lunas") => void;
+  onCreateInvoice?: (
+    invoiceNumber: string,
+    sekolahMitra: string,
+    jumlah: number,
+    tanggal: string,
+    statusPay: "Lunas" | "Belum Lunas",
+    deskripsi: string
+  ) => void;
 }
 
-export default function InvoiceList({ invoices, session, onUpdateInvoiceStatus }: InvoiceProps) {
+export default function InvoiceList({ invoices, session, schools = [], onUpdateInvoiceStatus, onCreateInvoice }: InvoiceProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"Semua" | "Lunas" | "Belum Lunas">("Semua");
   const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+
+  // Add invoice form states
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newInvoiceNo, setNewInvoiceNo] = useState("");
+  const [newJumlah, setNewJumlah] = useState("");
+  const [newDeskripsi, setNewDeskripsi] = useState("");
+  const [newSekolah, setNewSekolah] = useState("");
+  const [newStatus, setNewStatus] = useState<"Lunas" | "Belum Lunas">("Belum Lunas");
+
+  const handleOpenAddModal = () => {
+    const generatedNo = "INV-" + Date.now().toString().slice(-6);
+    setNewInvoiceNo(generatedNo);
+    setNewJumlah("");
+    setNewDeskripsi("");
+    setNewSekolah(session.role === "sekolah_mitra" ? (session.sekolahName || "") : (schools[0] || "SMA Lazuardi"));
+    setNewStatus("Belum Lunas");
+    setShowAddModal(true);
+  };
+
+  const handleSubmitInvoiceForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanNum = newJumlah.replace(/[^0-9]/g, "");
+    if (!newInvoiceNo.trim() || !cleanNum || !newSekolah) return;
+    const amountVal = parseFloat(cleanNum) || 0;
+    const formattedDate = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }).replace(/\s/g, "-");
+    
+    if (onCreateInvoice) {
+      onCreateInvoice(newInvoiceNo, newSekolah, amountVal, formattedDate, newStatus, newDeskripsi || "Iuran Biaya Monitoring");
+    }
+    setShowAddModal(false);
+  };
 
   const isMitra = session.role === "sekolah_mitra";
   const userSchool = session.sekolahName;
@@ -151,31 +191,41 @@ export default function InvoiceList({ invoices, session, onUpdateInvoiceStatus }
             </p>
           </div>
 
-          <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-100/80 self-start">
+          <div className="flex items-center gap-3 self-start md:self-auto flex-wrap">
             <button
-              onClick={() => setStatusFilter("Semua")}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
-                statusFilter === "Semua" ? "bg-blue-900 text-white shadow-xs" : "text-slate-400 hover:text-slate-600"
-              }`}
+              onClick={handleOpenAddModal}
+              className="bg-blue-900 hover:bg-blue-800 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
             >
-              Semua
+              <Plus className="w-4 h-4 text-yellow-300" />
+              Buat Invoice Baru
             </button>
-            <button
-              onClick={() => setStatusFilter("Lunas")}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
-                statusFilter === "Lunas" ? "bg-blue-900 text-white shadow-xs" : "text-slate-400 hover:text-slate-600"
-              }`}
-            >
-              Lunas
-            </button>
-            <button
-              onClick={() => setStatusFilter("Belum Lunas")}
-              className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
-                statusFilter === "Belum Lunas" ? "bg-blue-900 text-white shadow-xs" : "text-slate-400 hover:text-slate-600"
-              }`}
-            >
-              Belum Lunas
-            </button>
+
+            <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-100/80">
+              <button
+                onClick={() => setStatusFilter("Semua")}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
+                  statusFilter === "Semua" ? "bg-blue-900 text-white shadow-xs" : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                Semua
+              </button>
+              <button
+                onClick={() => setStatusFilter("Lunas")}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
+                  statusFilter === "Lunas" ? "bg-blue-900 text-white shadow-xs" : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                Lunas
+              </button>
+              <button
+                onClick={() => setStatusFilter("Belum Lunas")}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
+                  statusFilter === "Belum Lunas" ? "bg-blue-900 text-white shadow-xs" : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                Belum Lunas
+              </button>
+            </div>
           </div>
         </div>
 
@@ -323,6 +373,118 @@ export default function InvoiceList({ invoices, session, onUpdateInvoiceStatus }
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dynamic Add Invoice Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-100">
+            <div className="bg-blue-900 text-white p-5 text-center">
+              <h3 className="font-extrabold uppercase tracking-widest text-xs text-yellow-300">Buat Invoice Baru</h3>
+              <p className="text-xs text-slate-200 mt-1">Registrasi Administrasi Pembayaran Lazuardi</p>
+            </div>
+            
+            <form onSubmit={handleSubmitInvoiceForm} className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Nomor Invoice</label>
+                <input
+                  type="text"
+                  required
+                  value={newInvoiceNo}
+                  onChange={(e) => setNewInvoiceNo(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-hidden font-bold text-slate-700 font-mono"
+                  placeholder="e.g. INV-2026-01"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Instansi Sekolah Mitra</label>
+                {session.role === "sekolah_mitra" ? (
+                  <input
+                    type="text"
+                    readOnly
+                    value={session.sekolahName}
+                    className="w-full px-3 py-2 text-xs bg-slate-100 border border-slate-200 rounded-xl font-bold text-slate-700 font-sans"
+                  />
+                ) : (
+                  <select
+                    value={newSekolah}
+                    onChange={(e) => setNewSekolah(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-hidden font-medium text-slate-700 cursor-pointer"
+                  >
+                    {schools.length > 0 ? (
+                      schools.map((sch) => (
+                        <option key={sch} value={sch}>{sch}</option>
+                      ))
+                    ) : (
+                      <option value="SMA Lazuardi">SMA Lazuardi</option>
+                    )}
+                  </select>
+                )}
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Nominal Tagihan (IDR)</label>
+                <input
+                  type="text"
+                  required
+                  value={newJumlah}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, "");
+                    setNewJumlah(val);
+                  }}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-hidden font-bold text-slate-700 font-mono"
+                  placeholder="Masukkan jumlah tanpa huruf/titik, misal 2500000"
+                />
+                {newJumlah && (
+                  <span className="text-[10px] text-teal-600 font-semibold mt-1 block">
+                    Konfirmasi nominal: {formatRupiah(parseFloat(newJumlah) || 0)}
+                  </span>
+                )}
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Uraian / Deskripsi Keperluan</label>
+                <input
+                  type="text"
+                  required
+                  value={newDeskripsi}
+                  onChange={(e) => setNewDeskripsi(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-hidden font-medium text-slate-700"
+                  placeholder="e.g. Pembayaran Evaluasi Kurikulum atau Dana BOS Triwulan"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Status Pembayaran</label>
+                <select
+                  value={newStatus}
+                  onChange={(e) => setNewStatus(e.target.value as any)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-hidden font-medium text-slate-700 cursor-pointer"
+                >
+                  <option value="Belum Lunas">Belum Lunas</option>
+                  <option value="Lunas">Lunas</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="py-2 text-xs font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-slate-200 rounded-xl transition-all cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="py-2 text-xs font-bold text-slate-900 bg-yellow-400 hover:bg-yellow-500 rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  ✓ Terbitkan Invoice
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

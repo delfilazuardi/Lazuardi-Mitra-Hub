@@ -1,32 +1,43 @@
 import React, { useState } from "react";
 import { UserRole, UserSession } from "../types";
-import { GraduationCap, ShieldCheck, School, LogIn, Sparkles, Key } from "lucide-react";
+import { GraduationCap, ShieldCheck, School, LogIn, Sparkles, Key, Eye, EyeOff } from "lucide-react";
 
 interface LoginProps {
   onLoginSuccess: (session: UserSession) => void;
   schools: string[];
+  users?: any[];
 }
 
-export default function LoginScreen({ onLoginSuccess, schools }: LoginProps) {
+export default function LoginScreen({ onLoginSuccess, schools, users = [] }: LoginProps) {
   const [role, setRole] = useState<UserRole>("admin");
   const [selectedSchool, setSelectedSchool] = useState<string>(schools[0] || "Al-Falah Depok");
   const [email, setEmail] = useState("admin@lazuardi.com");
   const [password, setPassword] = useState("admin123");
   const [errorMsg, setErrorMsg] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleRoleChange = (newRole: UserRole) => {
     setRole(newRole);
+    // Auto-update sample login info but user can still type their custom credentials if they want
     if (newRole === "admin") {
-      setEmail("admin@lazuardi.com");
+      const existingAdmin = users.find(u => u.role === "admin");
+      setEmail(existingAdmin ? existingAdmin.email : "admin@lazuardi.com");
+      setPassword(existingAdmin ? existingAdmin.password : "admin123");
     } else {
-      setEmail(`bendahara.${selectedSchool.toLowerCase().replace(/\s+/g, "")}@lazuardi.com`);
+      const emailPattern = `bendahara.${selectedSchool.toLowerCase().replace(/\s+/g, "")}@lazuardi.com`;
+      const existingMitra = users.find(u => u.sekolahName === selectedSchool);
+      setEmail(existingMitra ? existingMitra.email : emailPattern);
+      setPassword(existingMitra ? existingMitra.password : "mitra123");
     }
   };
 
   const handleSchoolChange = (schoolName: string) => {
     setSelectedSchool(schoolName);
     if (role === "sekolah_mitra") {
-      setEmail(`bendahara.${schoolName.toLowerCase().replace(/\s+/g, "")}@lazuardi.com`);
+      const emailPattern = `bendahara.${schoolName.toLowerCase().replace(/\s+/g, "")}@lazuardi.com`;
+      const existingMitra = users.find(u => u.sekolahName === schoolName);
+      setEmail(existingMitra ? existingMitra.email : emailPattern);
+      setPassword(existingMitra ? existingMitra.password : "mitra123");
     }
   };
 
@@ -37,20 +48,55 @@ export default function LoginScreen({ onLoginSuccess, schools }: LoginProps) {
       return;
     }
 
-    onLoginSuccess({
-      username: role === "admin" ? "Sistem Administrator" : `Bendahara ${selectedSchool}`,
-      role: role,
-      sekolahName: role === "sekolah_mitra" ? selectedSchool : undefined
-    });
+    // Dynamic database check
+    const match = users.find(u => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password);
+    if (match) {
+      onLoginSuccess({
+        username: match.username,
+        role: match.role,
+        sekolahName: match.sekolahName
+      });
+      return;
+    }
+
+    // Default Fallback checks in case of custom test logs
+    if (email === "admin@lazuardi.com" && password === "admin123") {
+      onLoginSuccess({
+        username: "Pusat Lazuardi",
+        role: "admin",
+      });
+      return;
+    }
+
+    if (password === "mitra123") {
+      onLoginSuccess({
+        username: `Bendahara ${selectedSchool}`,
+        role: "sekolah_mitra",
+        sekolahName: selectedSchool
+      });
+      return;
+    }
+
+    setErrorMsg("E-mail atau password salah! Silakan coba lagi.");
   };
 
   // Quick Login triggers
   const handleQuickLogin = (targetRole: UserRole, targetSchool?: string) => {
-    onLoginSuccess({
-      username: targetRole === "admin" ? "Sistem Administrator (Quick)" : `Bendahara ${targetSchool || "SMA Lazuardi"}`,
-      role: targetRole,
-      sekolahName: targetRole === "sekolah_mitra" ? (targetSchool || "SMA Lazuardi") : undefined
-    });
+    if (targetRole === "admin") {
+      const match = users.find(u => u.role === "admin") || { username: "Pusat Lazuardi" };
+      onLoginSuccess({
+        username: match.username,
+        role: "admin"
+      });
+    } else {
+      const name = targetSchool || "SMA Lazuardi";
+      const match = users.find(u => u.sekolahName === name) || { username: `Bendahara ${name}` };
+      onLoginSuccess({
+        username: match.username,
+        role: "sekolah_mitra",
+        sekolahName: name
+      });
+    }
   };
 
   return (
@@ -170,12 +216,20 @@ export default function LoginScreen({ onLoginSuccess, schools }: LoginProps) {
               <div className="relative">
                 <Key className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl outline-hidden focus:ring-2 focus:ring-blue-500/10 focus:border-blue-900 transition-all font-medium text-slate-700"
+                  className="w-full pl-9 pr-10 py-2 text-xs bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200 rounded-xl outline-hidden focus:ring-2 focus:ring-blue-500/10 focus:border-blue-900 transition-all font-medium text-slate-700"
                   placeholder="Masukkan password..."
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 focus:outline-hidden cursor-pointer"
+                  title={showPassword ? "Sembunyikan password" : "Tampilkan password"}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
               {errorMsg && (
                 <span className="text-[10px] text-rose-500 font-bold mt-1 block">{errorMsg}</span>
@@ -192,7 +246,7 @@ export default function LoginScreen({ onLoginSuccess, schools }: LoginProps) {
               }}
             >
               <LogIn className="w-4 h-4 text-yellow-300" />
-              Verifikasi Sidang Lazuardi
+              Masuk / Login Hub
             </button>
           </form>
 

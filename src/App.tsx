@@ -12,6 +12,10 @@ import InvoiceList from "./components/InvoiceList";
 import RequestList from "./components/RequestList";
 import EventTrackerList from "./components/EventTrackerList";
 import MitraComparison from "./components/MitraComparison";
+import MitraComplianceTracker from "./components/MitraComplianceTracker";
+import UserManagement from "./components/UserManagement";
+import CategoryManagement from "./components/CategoryManagement";
+import { translations } from "./utils/translations";
 import {
   GraduationCap,
   LayoutDashboard,
@@ -35,6 +39,14 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 
 export default function App() {
+  // Language support ('id' | 'en')
+  const [lang, setLang] = useState<"id" | "en">(() => {
+    const saved = localStorage.getItem("laz_lang");
+    return (saved === "en" || saved === "id") ? saved : "id";
+  });
+
+  const t = translations[lang];
+
   // Authentication & session state
   const [session, setSession] = useState<UserSession | null>(() => {
     const saved = localStorage.getItem("laz_session");
@@ -59,6 +71,72 @@ export default function App() {
   const [selectedSchool, setSelectedSchool] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Users state
+  const [users, setUsers] = useState<any[]>(() => {
+    const saved = localStorage.getItem("laz_users");
+    if (saved) return JSON.parse(saved);
+    return [
+      {
+        id: "usr-1",
+        username: "Pusat Lazuardi",
+        email: "admin@lazuardi.com",
+        role: "admin",
+        password: "admin123"
+      },
+      {
+        id: "usr-2",
+        username: "Bendahara SMA Lazuardi",
+        email: "bendahara.smalazuardi@lazuardi.com",
+        role: "sekolah_mitra",
+        sekolahName: "SMA Lazuardi",
+        password: "mitra123"
+      },
+      {
+        id: "usr-3",
+        username: "Bendahara Al-Falah Depok",
+        email: "bendahara.al-falahdepok@lazuardi.com",
+        role: "sekolah_mitra",
+        sekolahName: "Al-Falah Depok",
+        password: "mitra123"
+      },
+      {
+        id: "usr-4",
+        username: "Bendahara Cordova",
+        email: "bendahara.cordova@lazuardi.com",
+        role: "sekolah_mitra",
+        sekolahName: "Cordova",
+        password: "mitra123"
+      },
+      {
+        id: "usr-5",
+        username: "Bendahara Haura",
+        email: "bendahara.haura@lazuardi.com",
+        role: "sekolah_mitra",
+        sekolahName: "Haura",
+        password: "mitra123"
+      },
+      {
+        id: "usr-6",
+        username: "Bendahara Ibnu Sina",
+        email: "bendahara.ibnusina@lazuardi.com",
+        role: "sekolah_mitra",
+        sekolahName: "Ibnu Sina",
+        password: "mitra123"
+      }
+    ];
+  });
+
+  // Dynamic Categories
+  const [requestCategories, setRequestCategories] = useState<string[]>(() => {
+    const saved = localStorage.getItem("laz_request_categories");
+    return saved ? JSON.parse(saved) : ["Dana BOS", "Fasilitas", "Pendampingan Kurikulum", "Lainnya"];
+  });
+
+  const [eventCategories, setEventCategories] = useState<string[]>(() => {
+    const saved = localStorage.getItem("laz_event_categories");
+    return saved ? JSON.parse(saved) : ["Audit", "Rapat Kurikulum", "Bimtek", "Lainnya"];
+  });
+
   // Dynamic feature data lists (Invoices, Requests, Events) with localStorage cache
   const [invoices, setInvoices] = useState<Invoice[]>(() => {
     const saved = localStorage.getItem("laz_invoices");
@@ -76,6 +154,22 @@ export default function App() {
   });
 
   // Save changes to cache
+  useEffect(() => {
+    localStorage.setItem("laz_lang", lang);
+  }, [lang]);
+
+  useEffect(() => {
+    localStorage.setItem("laz_users", JSON.stringify(users));
+  }, [users]);
+
+  useEffect(() => {
+    localStorage.setItem("laz_request_categories", JSON.stringify(requestCategories));
+  }, [requestCategories]);
+
+  useEffect(() => {
+    localStorage.setItem("laz_event_categories", JSON.stringify(eventCategories));
+  }, [eventCategories]);
+
   useEffect(() => {
     localStorage.setItem("laz_invoices", JSON.stringify(invoices));
   }, [invoices]);
@@ -184,18 +278,61 @@ export default function App() {
     );
   };
 
-  const handleCreateRequest = (
-    tipe: "Dana BOS" | "Fasilitas" | "Pendampingan Kurikulum" | "Lainnya",
+  const handleCreateReport = (
+    bulan: string,
+    tahun: number,
+    sekolahMitra: string,
+    statusLaporan: "Sudah Kirim" | "Belum Kirim",
+    statusAudit: "Selesai" | "Revisi" | "Belum Diaudit" | "-"
+  ) => {
+    const newRecord: ReportRecord = {
+      id: `rep-${Date.now()}`,
+      bulan,
+      tahun,
+      sekolahMitra,
+      tanggalKirim: statusLaporan === "Sudah Kirim" ? new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }).replace(/\s/g, "-") : "",
+      statusLaporan,
+      statusAudit
+    };
+    setRecords((prev) => [newRecord, ...prev]);
+  };
+
+  const handleCreateInvoice = (
+    invoiceNumber: string,
+    sekolahMitra: string,
+    jumlah: number,
+    tanggal: string,
+    statusPay: "Lunas" | "Belum Lunas",
     deskripsi: string
   ) => {
+    const newInv: Invoice = {
+      id: `inv-${Date.now()}`,
+      invoiceNumber,
+      sekolahMitra,
+      jumlah,
+      tanggal,
+      statusPay,
+      deskripsi
+    };
+    setInvoices((prev) => [newInv, ...prev]);
+  };
+
+  const handleCreateRequest = (
+    tipe: string,
+    deskripsi: string,
+    items?: any[],
+    targetSchool?: string
+  ) => {
     if (!session) return;
+    const defaultSchool = session.role === "admin" ? (targetSchool || "SMA Lazuardi") : (session.sekolahName || "SMA Lazuardi");
     const newReq: PartnerRequest = {
       id: `req-${Date.now()}`,
-      sekolahMitra: session.role === "admin" ? "Sekretariat Lazuardi" : (session.sekolahName || "SMA Lazuardi"),
+      sekolahMitra: defaultSchool,
       tipeRequest: tipe,
       deskripsi: deskripsi,
       tanggal: new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }).replace(/\s/g, "-"),
-      statusApproved: "Menunggu",
+      statusApproved: session.role === "admin" ? "Setuju" : "Menunggu",
+      items: items
     };
     setRequests((prev) => [newReq, ...prev]);
   };
@@ -224,47 +361,84 @@ export default function App() {
     setEvents((prev) => [newEvt, ...prev]);
   };
 
+  const handleUpdateEvent = (
+    id: string,
+    namaEvent: string,
+    tanggal: string,
+    sekolahMitra: string,
+    kategori: "Audit" | "Rapat Kurikulum" | "Bimtek" | "Lainnya",
+    deskripsi: string
+  ) => {
+    setEvents((prev) =>
+      prev.map((evt) =>
+        evt.id === id ? { ...evt, namaEvent, tanggal, sekolahMitra, kategori, deskripsi } : evt
+      )
+    );
+  };
+
+  const handleDeleteEvent = (id: string) => {
+    setEvents((prev) => prev.filter((evt) => evt.id !== id));
+  };
+
+  const handleAddUser = (newUser: any) => {
+    setUsers((prev) => [...prev, newUser]);
+  };
+
+  const handleEditUser = (id: string, updated: any) => {
+    setUsers((prev) => prev.map((u) => (u.id === id ? updated : u)));
+  };
+
+  const handleDeleteUser = (id: string) => {
+    setUsers((prev) => prev.filter((u) => u.id !== id));
+  };
+
   // If user is not logged in, prompt the Login Screen beautifully
   if (!session) {
-    return <LoginScreen onLoginSuccess={handleLogin} schools={schoolList} />;
+    return <LoginScreen onLoginSuccess={handleLogin} schools={schoolList} users={users} />;
   }
 
   // Side bar Navigation items with icons, filtered by Roles
   const navigationItems = [
     {
       id: "overview",
-      label: "Dashboard Ringkasan",
+      label: t.overview,
       icon: LayoutDashboard,
       adminOnly: false,
     },
     {
       id: "reports",
-      label: "Laporan Bulanan",
+      label: t.reports,
       icon: FileSpreadsheet,
       adminOnly: false,
     },
     {
       id: "invoices",
-      label: "Invoice Pembayaran",
+      label: t.invoices,
       icon: Receipt,
       adminOnly: false,
     },
     {
       id: "requests",
-      label: "Request Mitra",
+      label: t.requests,
       icon: MessageSquare,
       adminOnly: false,
     },
     {
       id: "events",
-      label: "Event Tracker",
+      label: t.events,
       icon: Calendar,
       adminOnly: false,
     },
     {
       id: "users",
-      label: "Kelola Pengguna",
+      label: t.users,
       icon: Users,
+      adminOnly: true,
+    },
+    {
+      id: "categories",
+      label: t.categories,
+      icon: Layers,
       adminOnly: true,
     },
   ];
@@ -385,7 +559,7 @@ export default function App() {
             className="w-full py-2 px-3 text-slate-350 hover:text-white hover:bg-rose-950/40 rounded-xl text-xs font-bold transition-all flex items-center gap-3 cursor-pointer"
           >
             <LogOut className="w-4 h-4 text-rose-400" />
-            Keluar Sidang
+            {lang === "id" ? "Keluar" : "Logout"}
           </button>
         </div>
       </aside>
@@ -398,7 +572,7 @@ export default function App() {
           <div id="fallback-notification" className="bg-amber-50 border-b border-amber-200 py-2.5 px-6">
             <p className="text-[11px] text-amber-800 font-bold flex items-center gap-2">
               <Shield className="w-4 h-4 text-amber-600 flex-shrink-0" />
-              Sistem Lokal Stabil: Data monitoring Lazuardi Mitra Hub dimuat dari basis data cadangan inkremental.
+              {t.offlineStableText}
             </p>
           </div>
         )}
@@ -411,25 +585,51 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2.5">
                 <h1 className="text-2xl font-extrabold text-slate-800 tracking-tight">
-                  {activeTab === "overview" && "Dashboard Pengawasan Internal"}
-                  {activeTab === "reports" && "Kelengkapan Laporan Bulanan"}
-                  {activeTab === "invoices" && "Modul Keuangan & Invoice"}
-                  {activeTab === "requests" && "Aspirasi & Request Mitra"}
-                  {activeTab === "events" && "Sistem Kalender Audit & Bimtek"}
-                  {activeTab === "users" && "Akses Administrasi Pengguna"}
+                  {activeTab === "overview" && (lang === "id" ? "Dashboard Pengawasan Internal" : "Internal Supervision Dashboard")}
+                  {activeTab === "reports" && (lang === "id" ? "Kelengkapan Laporan Bulanan" : "Monthly Report Status")}
+                  {activeTab === "invoices" && (lang === "id" ? "Modul Keuangan & Invoice" : "Financial & Invoice Module")}
+                  {activeTab === "requests" && (lang === "id" ? "Aspirasi & Request Mitra" : "Partner Wishes & Requests")}
+                  {activeTab === "events" && (lang === "id" ? "Sistem Kalender Audit & Bimtek" : "Audit & Technical Guidance Calendar")}
+                  {activeTab === "users" && (lang === "id" ? "Kelola Kredensial & Pengguna" : "User Security & Accounts")}
+                  {activeTab === "categories" && (lang === "id" ? "Kelola Kategori & Klasifikasi" : "Category Configurations")}
                 </h1>
                 <span className="text-[10px] font-extrabold bg-blue-900 text-yellow-300 px-2 py-0.5 rounded-full border border-blue-900/30 uppercase tracking-wider">
-                  {session.role === "admin" ? "Akses Multi-Sekolah" : "Akses Terisolasi"}
+                  {session.role === "admin" ? t.multiSchoolAccess : t.isolatedAccess}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-1 font-medium">
                 {session.role === "admin" 
-                  ? "Sistem pengawasan Lazuardi Group terintegrasi dengan 10 sekolah mitra nasional."
-                  : `Anda masuk sebagai bendahara ${session.sekolahName}. Seluruh data dibatasi demi keamanan instansi.`}
+                  ? t.adminSub
+                  : t.mitraSub.replace("{schoolName}", session.sekolahName || "")}
               </p>
             </div>
 
-            <div className="flex items-center gap-2 self-start sm:self-auto">
+            <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+              
+              {/* Language Selector Toggle */}
+              <div className="flex items-center bg-white border border-slate-200/80 rounded-xl p-0.5 shadow-xs mr-1">
+                <button
+                  type="button"
+                  onClick={() => setLang("id")}
+                  className={`text-[10px] font-extrabold px-2 py-1 rounded-lg transition-all cursor-pointer ${
+                    lang === "id" ? "bg-blue-900 text-white shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-800"
+                  }`}
+                  title="Bahasa Indonesia"
+                >
+                  ID
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLang("en")}
+                  className={`text-[10px] font-extrabold px-2 py-1 rounded-lg transition-all cursor-pointer ${
+                    lang === "en" ? "bg-blue-900 text-white shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-800"
+                  }`}
+                  title="English Language"
+                >
+                  EN
+                </button>
+              </div>
+
               <a
                 id="spreadsheet-external-link"
                 href="https://docs.google.com/spreadsheets/d/1v0Z9ovWaR6e3B5VrxtIhJ-U9Sgy0ciybYmKxxcBr0HM/edit?gid=1734668151#gid=1734668151"
@@ -438,7 +638,7 @@ export default function App() {
                 className="flex items-center gap-1.5 text-xs text-slate-600 bg-white hover:bg-slate-50 border border-slate-200/80 px-3.5 py-2 rounded-xl font-bold transition-all shadow-xs"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
-                Spreadsheet
+                {t.spreadSheet}
                 <ArrowUpRight className="w-3 h-3 opacity-60" />
               </a>
 
@@ -447,10 +647,10 @@ export default function App() {
                 onClick={fetchReports}
                 disabled={refreshing || source === "loading"}
                 className="p-2 hover:bg-slate-50 bg-white border border-slate-200/80 rounded-xl transition-all cursor-pointer text-slate-600 disabled:opacity-50 flex items-center gap-1.5 shadow-xs"
-                title="Sinkronisasi data Google Sheets"
+                title={t.syncText}
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin text-blue-900" : ""}`} />
-                <span className="text-xs font-bold hidden sm:inline">Sinkronisasi</span>
+                <span className="text-xs font-bold hidden sm:inline">{t.sync}</span>
               </button>
             </div>
           </div>
@@ -486,6 +686,13 @@ export default function App() {
                       </div>
                     </div>
                   </div>
+
+                  {/* Detailed Interactive Compliance Matrix & Visual Analysis per School */}
+                  <MitraComplianceTracker 
+                    records={records}
+                    invoices={invoices}
+                    events={events}
+                  />
                 </div>
               )}
 
@@ -513,6 +720,9 @@ export default function App() {
                     <div className="lg:col-span-2 space-y-6">
                       <ReportTable
                         records={isolatedRecords}
+                        schools={schoolList}
+                        session={session}
+                        onCreateReport={handleCreateReport}
                         onSelectSchool={(schoolName) => {
                           setSelectedSchool(schoolName);
                           setTimeout(() => {
@@ -583,7 +793,9 @@ export default function App() {
                   <InvoiceList
                     invoices={invoices}
                     session={session}
+                    schools={schoolList}
                     onUpdateInvoiceStatus={handleUpdateInvoiceStatus}
+                    onCreateInvoice={handleCreateInvoice}
                   />
                 </div>
               )}
@@ -594,6 +806,7 @@ export default function App() {
                   <RequestList
                     requests={requests}
                     session={session}
+                    schools={schoolList}
                     onCreateRequest={handleCreateRequest}
                     onUpdateRequestStatus={handleUpdateRequestStatus}
                   />
@@ -608,55 +821,36 @@ export default function App() {
                     session={session}
                     schools={schoolList}
                     onCreateEvent={handleCreateEvent}
+                    onUpdateEvent={handleUpdateEvent}
+                    onDeleteEvent={handleDeleteEvent}
                   />
                 </div>
               )}
 
-              {/* PAGE TAB 6: SETTINGS / USERS SECURITY CHECK (ADMIN ONLY) */}
+              {/* PAGE TAB 6: DYNAMIC USER MANAGEMENT PANEL (ADMIN ONLY) */}
               {activeTab === "users" && session.role === "admin" && (
-                <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-xs space-y-6 animated-fade-in">
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-800 tracking-tight">Kelola Sidang Kredensial & Pengguna</h2>
-                    <p className="text-xs text-slate-400 mt-1">
-                      Katalog akun simulasi terdaftar pada sistem Lazuardi Mitra Hub untuk referensi verifikasi audit keamanan.
-                    </p>
-                  </div>
+                <div className="animated-fade-in">
+                  <UserManagement
+                    users={users}
+                    schools={schoolList}
+                    onAddUser={handleAddUser}
+                    onEditUser={handleEditUser}
+                    onDeleteUser={handleDeleteUser}
+                    lang={lang}
+                  />
+                </div>
+              )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-5 bg-slate-50 rounded-2xl border border-slate-150 relative overflow-hidden">
-                      <div className="absolute top-3 right-3 p-1.5 bg-blue-900 border border-yellow-400/20 rounded-lg text-yellow-300">
-                        <ShieldCheck className="w-4 h-4" />
-                      </div>
-                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider font-mono">Role: SUPER ADMINISTRATOR</span>
-                      <strong className="text-sm font-bold text-slate-700 block mt-2">Sistem Administrator</strong>
-                      <span className="text-xs text-slate-500 font-mono block mt-1">E-mail: admin@lazuardi.com</span>
-                      <p className="text-[11px] text-slate-400 mt-3 border-t border-slate-200/50 pt-2 leading-relaxed">
-                        Izin penuh di seluruh sektor: Tinjau statistik group, perbaharui invoice iuran, setujui request sarana keuangan, dan terbitkan BIMTEK.
-                      </p>
-                    </div>
-
-                    <div className="p-5 bg-slate-50 rounded-2xl border border-slate-150 relative overflow-hidden">
-                      <div className="absolute top-3 right-3 p-1.5 bg-yellow-400 border border-blue-950/20 rounded-lg text-blue-950">
-                        <School className="w-4 h-4" />
-                      </div>
-                      <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider font-mono">Role: BENDAHARA SEKOLAH</span>
-                      <strong className="text-sm font-bold text-slate-700 block mt-2">Simulasi Akun Mitra Terpilih</strong>
-                      <span className="text-xs text-slate-500 font-mono block mt-1">E-mail: bendahara.sekolah@lazuardi.com</span>
-                      <p className="text-[11px] text-slate-400 mt-3 border-t border-slate-200/50 pt-2 leading-relaxed">
-                        Izin terbatas: Hanya dapat memantau data laporan internal sekolah bersangkutan, membayar iuran wajib, mengirimkan ajuan bantuan, dan membaca timeline.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-yellow-50 border border-yellow-200 text-slate-700 rounded-xl text-xs flex items-start gap-2 max-w-2xl leading-normal">
-                    <Lock className="w-4 h-4 text-blue-900 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <strong>Sistem Hub Keamanan Berlapis Lazuardi Group</strong>
-                      <p className="text-[11px] text-slate-500 mt-1">
-                        Sistem otentikasi membatasi rendering SQL query di tingkat backend berdasarkan token ID. Dengan ini, pelanggaran kebocoran data silang antar-sekolah mitra dapat ditekan hingga 100%.
-                      </p>
-                    </div>
-                  </div>
+              {/* PAGE TAB 7: DYNAMIC CATEGORY CONFIGURATION (ADMIN ONLY) */}
+              {activeTab === "categories" && session.role === "admin" && (
+                <div className="animated-fade-in">
+                  <CategoryManagement
+                    requestCategories={requestCategories}
+                    eventCategories={eventCategories}
+                    onRequestCatChange={setRequestCategories}
+                    onEventCatChange={setEventCategories}
+                    lang={lang}
+                  />
                 </div>
               )}
 

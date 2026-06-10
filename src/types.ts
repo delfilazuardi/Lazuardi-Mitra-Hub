@@ -53,13 +53,21 @@ export interface Invoice {
   deskripsi: string;
 }
 
+export interface RequestItem {
+  id: string;
+  namaItem: string;
+  jumlah: number;
+  catatan?: string;
+}
+
 export interface PartnerRequest {
   id: string;
   sekolahMitra: string;
-  tipeRequest: "Dana BOS" | "Fasilitas" | "Pendampingan Kurikulum" | "Lainnya";
+  tipeRequest: string;
   deskripsi: string;
   tanggal: string;
   statusApproved: "Setuju" | "Menunggu" | "Ditolak";
+  items?: RequestItem[];
 }
 
 export interface EventTracker {
@@ -67,7 +75,7 @@ export interface EventTracker {
   namaEvent: string;
   tanggal: string;
   sekolahMitra: string; // "Semua" or a specific school
-  kategori: "Audit" | "Rapat Kurikulum" | "Bimtek" | "Lainnya";
+  kategori: string;
   deskripsi: string;
 }
 

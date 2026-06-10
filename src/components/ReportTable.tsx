@@ -1,13 +1,22 @@
 import React, { useState, useMemo } from "react";
-import { ReportRecord } from "../types";
-import { Search, Filter, RefreshCw, ChevronLeft, ChevronRight, Download, Calendar, Check, AlertTriangle, FileSpreadsheet } from "lucide-react";
+import { ReportRecord, UserSession } from "../types";
+import { Search, Filter, RefreshCw, ChevronLeft, ChevronRight, Download, Calendar, Check, AlertTriangle, FileSpreadsheet, Plus, X } from "lucide-react";
 
 interface TableProps {
   records: ReportRecord[];
+  schools: string[];
+  session: UserSession;
+  onCreateReport?: (
+    bulan: string,
+    tahun: number,
+    sekolahMitra: string,
+    statusLaporan: "Sudah Kirim" | "Belum Kirim",
+    statusAudit: "Selesai" | "Revisi" | "Belum Diaudit" | "-"
+  ) => void;
   onSelectSchool: (schoolName: string) => void;
 }
 
-export default function ReportTable({ records, onSelectSchool }: TableProps) {
+export default function ReportTable({ records, schools, session, onCreateReport, onSelectSchool }: TableProps) {
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSchool, setSelectedSchool] = useState("Semua");
@@ -17,8 +26,25 @@ export default function ReportTable({ records, onSelectSchool }: TableProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  // Add report modal state variables
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newBulan, setNewBulan] = useState("Januari");
+  const [newTahun, setNewTahun] = useState(2026);
+  const [newSekolah, setNewSekolah] = useState(session.role === "sekolah_mitra" ? (session.sekolahName || "") : "SMA Lazuardi");
+  const [newStatusLaporan, setNewStatusLaporan] = useState<"Sudah Kirim" | "Belum Kirim">("Sudah Kirim");
+  const [newStatusAudit, setNewStatusAudit] = useState<"Selesai" | "Revisi" | "Belum Diaudit" | "-">("Belum Diaudit");
+
+  const handleSubmitReportForm = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSekolah) return;
+    if (onCreateReport) {
+      onCreateReport(newBulan, newTahun, newSekolah, newStatusLaporan, newStatusAudit);
+    }
+    setShowAddModal(false);
+  };
+
   // Derive unique schools, audits, years for filter options
-  const schools = useMemo(() => {
+  const availableSchoolsFilter = useMemo(() => {
     return ["Semua", ...Array.from(new Set(records.map((r) => r.sekolahMitra)))];
   }, [records]);
 
@@ -76,14 +102,27 @@ export default function ReportTable({ records, onSelectSchool }: TableProps) {
             </p>
           </div>
           
-          <button
-            id="btn-reset-filters"
-            onClick={handleReset}
-            className="flex items-center gap-1.5 text-xs text-indigo-600 font-semibold bg-indigo-50 hover:bg-indigo-100/80 px-3 py-2 rounded-xl transition-all self-start md:self-auto"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            Reset Filter
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              id="btn-add-report"
+              onClick={() => {
+                setNewSekolah(session.role === "sekolah_mitra" ? (session.sekolahName || "") : "SMA Lazuardi");
+                setShowAddModal(true);
+              }}
+              className="flex items-center gap-1.5 text-xs text-white font-semibold bg-blue-900 hover:bg-blue-800 px-3 py-2 rounded-xl transition-all cursor-pointer shadow-xs"
+            >
+              <Plus className="w-4 h-4 text-yellow-300" />
+              Tambah Laporan Baru
+            </button>
+            <button
+              id="btn-reset-filters"
+              onClick={handleReset}
+              className="flex items-center gap-1.5 text-xs text-indigo-600 font-semibold bg-indigo-50 hover:bg-indigo-100/80 px-3 py-2 rounded-xl transition-all cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Reset Filter
+            </button>
+          </div>
         </div>
 
         {/* Filter input grid */}
@@ -116,7 +155,7 @@ export default function ReportTable({ records, onSelectSchool }: TableProps) {
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200/60 rounded-xl outline-hidden focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all font-medium text-slate-700 appearance-none cursor-pointer"
             >
               <option disabled>Pilih Sekolah Mitra</option>
-              {schools.map((s) => (
+              {availableSchoolsFilter.map((s) => (
                 <option key={s} value={s}>
                   {s === "Semua" ? "Semua Sekolah Mitra" : s}
                 </option>
@@ -298,6 +337,113 @@ export default function ReportTable({ records, onSelectSchool }: TableProps) {
             >
               <ChevronRight className="w-4 h-4" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Dynamic Add new Report modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-100">
+            <div className="bg-blue-900 text-white p-5 text-center">
+              <h3 className="font-extrabold uppercase tracking-widest text-xs text-yellow-300">Tambah Data Laporan Lazuardi</h3>
+              <p className="text-xs text-slate-200 mt-1">Registrasi Arsip Laporan Hub</p>
+            </div>
+            
+            <form onSubmit={handleSubmitReportForm} className="p-6 space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Instansi Sekolah Mitra</label>
+                {session.role === "sekolah_mitra" ? (
+                  <input
+                    type="text"
+                    readOnly
+                    value={session.sekolahName}
+                    className="w-full px-3 py-2 text-xs bg-slate-100 border border-slate-200 rounded-xl font-bold text-slate-700"
+                  />
+                ) : (
+                  <select
+                    value={newSekolah}
+                    onChange={(e) => setNewSekolah(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-hidden font-medium text-slate-700 cursor-pointer"
+                  >
+                    {schools.map((sch) => (
+                      <option key={sch} value={sch}>{sch}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Bulan</label>
+                  <select
+                    value={newBulan}
+                    onChange={(e) => setNewBulan(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-hidden font-medium text-slate-700 cursor-pointer"
+                  >
+                    {["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"].map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Tahun</label>
+                  <input
+                    type="number"
+                    min={2020}
+                    max={2035}
+                    value={newTahun}
+                    onChange={(e) => setNewTahun(parseInt(e.target.value) || 2026)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-hidden font-medium text-slate-700 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Status Pengiriman</label>
+                  <select
+                    value={newStatusLaporan}
+                    onChange={(e) => setNewStatusLaporan(e.target.value as any)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-hidden font-medium text-slate-700 cursor-pointer"
+                  >
+                    <option value="Sudah Kirim">Sudah Kirim</option>
+                    <option value="Belum Kirim">Belum Kirim</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Status Audit</label>
+                  <select
+                    value={newStatusAudit}
+                    onChange={(e) => setNewStatusAudit(e.target.value as any)}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-hidden font-medium text-slate-700 cursor-pointer"
+                  >
+                    <option value="Belum Diaudit">Belum Diaudit</option>
+                    <option value="Selesai">Selesai Audit</option>
+                    <option value="Revisi">Perlu Revisi</option>
+                    <option value="-">-</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="py-2 text-xs font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-50 border border-slate-200 rounded-xl transition-all cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="py-2 text-xs font-bold text-slate-900 bg-yellow-400 hover:bg-yellow-500 rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  ✓ Simpan Laporan
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
