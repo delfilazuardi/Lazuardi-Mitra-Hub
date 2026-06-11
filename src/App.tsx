@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { ReportRecord, DashboardStats, UserSession, Invoice, PartnerRequest, EventTracker } from "./types";
-import { fallbackReports } from "./fallbackData";
+import { ReportRecord, DashboardStats, UserSession, Invoice, PartnerRequest, EventTracker, KPIMitra, KPIActivity } from "./types";
+import { fallbackReports, fallbackKPIs } from "./fallbackData";
 import { mockInvoices, mockPartnerRequests, mockEvents } from "./mockFeaturesData";
 import ReportStats from "./components/ReportStats";
 import ReportChart from "./components/ReportChart";
@@ -15,6 +15,7 @@ import MitraComparison from "./components/MitraComparison";
 import MitraComplianceTracker from "./components/MitraComplianceTracker";
 import UserManagement from "./components/UserManagement";
 import CategoryManagement from "./components/CategoryManagement";
+import KPIMitraView from "./components/KPIMitraView";
 import { translations } from "./utils/translations";
 import {
   GraduationCap,
@@ -34,7 +35,10 @@ import {
   ShieldCheck,
   School,
   Lock,
-  UserCheck
+  UserCheck,
+  Link2,
+  Award,
+  Sliders
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -153,6 +157,79 @@ export default function App() {
     return saved ? JSON.parse(saved) : mockEvents;
   });
 
+  const [kpis, setKpis] = useState<KPIMitra[]>(() => {
+    const saved = localStorage.getItem("laz_kpis");
+    return saved ? JSON.parse(saved) : fallbackKPIs;
+  });
+
+  const [overviewYear, setOverviewYear] = useState<string>("Semua");
+  const [overviewAcademicYear, setOverviewAcademicYear] = useState<string>("Semua");
+
+  // Google OAuth & Sheets Integration state
+  const [googleToken, setGoogleToken] = useState<string | null>(() => {
+    return localStorage.getItem("laz_google_token");
+  });
+
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (hash && hash.includes("access_token=")) {
+      const tokenMatch = hash.match(/access_token=([^&]+)/);
+      if (tokenMatch && tokenMatch[1]) {
+        const token = tokenMatch[1];
+        setGoogleToken(token);
+        localStorage.setItem("laz_google_token", token);
+        // Trim hash securely to keep clean url
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    }
+  }, []);
+
+  const handleGoogleLogin = () => {
+    const clientId = (import.meta as any).env.VITE_GOOGLE_CLIENT_ID || "64005f6b-002e-47ab-91bb-5b70fdd2277b"; // From provisioned platform resources or config
+    const scope = "https://www.googleapis.com/auth/spreadsheets";
+    const redirectUri = window.location.origin;
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=${encodeURIComponent(scope)}`;
+    window.location.href = authUrl;
+  };
+
+  const handleDisconnectGoogle = () => {
+    setGoogleToken(null);
+    localStorage.removeItem("laz_google_token");
+  };
+
+  // Generic write back to Google Spreadsheet via server-side OAuth gateway
+  const writeToSpreadsheet = async (sheetName: string, values: any[][]) => {
+    if (!googleToken) {
+      console.log(`No Google token found. Addition saved locally, connect Google Sheets to sync dynamically.`);
+      return false;
+    }
+
+    try {
+      const response = await fetch("/api/write-sheet", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${googleToken}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ sheetName, values })
+      });
+
+      const json = await response.json();
+      if (json.success) {
+        console.log(`Successfully appended dynamic row to Google Sheet tab: [${sheetName}]!`);
+        // Refresh local cache representation to see the newly pulled spreadsheet row
+        setTimeout(() => syncAllData(), 1200);
+        return true;
+      } else {
+        console.warn("Failed to synchronize addition to Google Spreadsheet:", json.error);
+        return false;
+      }
+    } catch (err) {
+      console.error("Failed to connect write gateway API:", err);
+      return false;
+    }
+  };
+
   // Save changes to cache
   useEffect(() => {
     localStorage.setItem("laz_lang", lang);
@@ -182,21 +259,54 @@ export default function App() {
     localStorage.setItem("laz_events", JSON.stringify(events));
   }, [events]);
 
-  // Syncing reports from the sheets API
-  const fetchReports = async () => {
+  useEffect(() => {
+    localStorage.setItem("laz_kpis", JSON.stringify(kpis));
+  }, [kpis]);
+
+  // Syncing reports, invoices, requests, and login users list from Excel live streams!
+  const syncAllData = async () => {
     setRefreshing(true);
     try {
-      const res = await fetch("/api/reports");
-      const json = await res.json();
-      if (json.success && json.data) {
-        setRecords(json.data);
-        setSource(json.source);
+      // 1. Fetch compliance reports
+      const reportsRes = await fetch("/api/reports");
+      const reportsJson = await reportsRes.json();
+      if (reportsJson.success && reportsJson.data) {
+        setRecords(reportsJson.data);
+        setSource(reportsJson.source);
       } else {
         setRecords(fallbackReports);
         setSource("fallback");
       }
+
+      // 2. Fetch invoices
+      const invoicesRes = await fetch("/api/invoices");
+      const invoicesJson = await invoicesRes.json();
+      if (invoicesJson.success && invoicesJson.data) {
+        setInvoices(invoicesJson.data);
+      }
+
+      // 3. Fetch requests
+      const requestsRes = await fetch("/api/requests");
+      const requestsJson = await requestsRes.json();
+      if (requestsJson.success && requestsJson.data) {
+        setRequests(requestsJson.data);
+      }
+
+      // 4. Fetch dynamic LOGIN accounts list
+      const usersRes = await fetch("/api/users-sync");
+      const usersJson = await usersRes.json();
+      if (usersJson.success && usersJson.data && usersJson.data.length > 0) {
+        setUsers(usersJson.data);
+      }
+
+      // 5. Fetch KPIs
+      const kpiRes = await fetch("/api/kpis");
+      const kpiJson = await kpiRes.json();
+      if (kpiJson.success && kpiJson.data) {
+        setKpis(kpiJson.data);
+      }
     } catch (err) {
-      console.error("Gagal mendapatkan data laporan:", err);
+      console.error("Gagal melakukan sinkronisasi data dengan Google Sheet:", err);
       setRecords(fallbackReports);
       setSource("fallback");
     } finally {
@@ -205,7 +315,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchReports();
+    syncAllData();
   }, []);
 
   // Set default tab on login role change
@@ -271,6 +381,102 @@ export default function App() {
     };
   }, [isolatedRecords, session]);
 
+  // Filter overview records by Year and Academic Year dynamically
+  const filteredOverviewRecords = useMemo(() => {
+    let list = isolatedRecords;
+    
+    // Apply overviewYear filter if not "Semua"
+    if (overviewYear !== "Semua") {
+      const targetYear = parseInt(overviewYear);
+      list = list.filter((r) => r.tahun === targetYear);
+    }
+    
+    // Apply overviewAcademicYear filter if not "Semua"
+    if (overviewAcademicYear !== "Semua") {
+      const [startYrStr, endYrStr] = overviewAcademicYear.split("/");
+      const startYear = parseInt(startYrStr);
+      const endYear = parseInt(endYrStr);
+      
+      const firstSemesterMonths = ["Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+      const secondSemesterMonths = ["Januari", "Februari", "Maret", "April", "Mei", "Juni"];
+      
+      list = list.filter((r) => {
+        if (r.tahun === startYear && firstSemesterMonths.includes(r.bulan)) return true;
+        if (r.tahun === endYear && secondSemesterMonths.includes(r.bulan)) return true;
+        return false;
+      });
+    }
+    
+    return list;
+  }, [isolatedRecords, overviewYear, overviewAcademicYear]);
+
+  // Filter overview invoices by Year and Academic Year dynamically
+  const filteredOverviewInvoices = useMemo(() => {
+    let list = invoices;
+    if (overviewYear !== "Semua") {
+      const yr = parseInt(overviewYear);
+      list = list.filter((i) => i.tahun === yr);
+    }
+    if (overviewAcademicYear !== "Semua") {
+      const [startYrStr, endYrStr] = overviewAcademicYear.split("/");
+      const startYear = parseInt(startYrStr);
+      const endYear = parseInt(endYrStr);
+      
+      list = list.filter((i) => i.tahun === startYear || i.tahun === endYear);
+    }
+    return list;
+  }, [invoices, overviewYear, overviewAcademicYear]);
+
+  // Filter overview events by Year and Academic Year dynamically
+  const filteredOverviewEvents = useMemo(() => {
+    let list = events;
+    if (overviewYear !== "Semua") {
+      list = list.filter((e) => String(e.tahun) === overviewYear);
+    }
+    if (overviewAcademicYear !== "Semua") {
+      const [startYrStr, endYrStr] = overviewAcademicYear.split("/");
+      list = list.filter((e) => String(e.tahun) === startYrStr || String(e.tahun) === endYrStr);
+    }
+    return list;
+  }, [events, overviewYear, overviewAcademicYear]);
+
+  // Compute overview-specific stats based on filtered overview records
+  const overviewStats: DashboardStats = useMemo(() => {
+    const targetSource = filteredOverviewRecords;
+    if (targetSource.length === 0) {
+      return {
+        totalMitra: 0,
+        totalLaporanKirim: 0,
+        totalLaporanBelumKirim: 0,
+        totalSelesai: 0,
+        totalRevisi: 0,
+        totalBelumAudit: 0,
+        persentaseKirim: 0,
+      };
+    }
+
+    const uniqueSchools = Array.from(new Set(targetSource.map((r) => r.sekolahMitra)));
+    const totalMitra = uniqueSchools.length;
+    const totalLaporanKirim = targetSource.filter((r) => r.statusLaporan === "Sudah Kirim").length;
+    const totalLaporanBelumKirim = targetSource.filter((r) => r.statusLaporan === "Belum Kirim").length;
+    const totalSelesai = targetSource.filter((r) => r.statusAudit === "Selesai").length;
+    const totalRevisi = targetSource.filter((r) => r.statusAudit === "Revisi").length;
+    const totalBelumAudit = targetSource.filter((r) => r.statusAudit === "Belum Diaudit").length;
+
+    const relevantSlots = totalLaporanKirim + totalLaporanBelumKirim;
+    const persentaseKirim = relevantSlots > 0 ? Math.round((totalLaporanKirim / relevantSlots) * 100) : 0;
+
+    return {
+      totalMitra: session?.role === "admin" ? totalMitra : 1,
+      totalLaporanKirim,
+      totalLaporanBelumKirim,
+      totalSelesai,
+      totalRevisi,
+      totalBelumAudit,
+      persentaseKirim,
+    };
+  }, [filteredOverviewRecords, session]);
+
   // Mutation handlers passed to sub-modules
   const handleUpdateInvoiceStatus = (id: string, newStatus: "Lunas" | "Belum Lunas") => {
     setInvoices((prev) =>
@@ -285,16 +491,22 @@ export default function App() {
     statusLaporan: "Sudah Kirim" | "Belum Kirim",
     statusAudit: "Selesai" | "Revisi" | "Belum Diaudit" | "-"
   ) => {
+    const tglStr = statusLaporan === "Sudah Kirim" ? new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }).replace(/\s/g, "-") : "";
     const newRecord: ReportRecord = {
       id: `rep-${Date.now()}`,
       bulan,
       tahun,
       sekolahMitra,
-      tanggalKirim: statusLaporan === "Sudah Kirim" ? new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }).replace(/\s/g, "-") : "",
+      tanggalKirim: tglStr,
       statusLaporan,
       statusAudit
     };
     setRecords((prev) => [newRecord, ...prev]);
+
+    // Push back dynamically to Google Sheet
+    writeToSpreadsheet("LAPORAN BULANAN", [
+      [ bulan, tahun, sekolahMitra, tglStr, statusLaporan, statusAudit ]
+    ]);
   };
 
   const handleCreateInvoice = (
@@ -315,6 +527,12 @@ export default function App() {
       deskripsi
     };
     setInvoices((prev) => [newInv, ...prev]);
+
+    // Push back dynamically to Google Sheet
+    // Columns: Invoice, Sekolah Mitra, Bulan , Tahun, Status Invoice, Tanggal Kirim, Tanggal Bayar , Tagihan Full, Tagihan Realisasi , Pembayaran, Status Payment
+    writeToSpreadsheet("INV & PAYMENT FF", [
+      [ invoiceNumber, sekolahMitra, "Manual Input", 2026, "TERKIRIM", tanggal, "", jumlah, jumlah, statusPay === "Lunas" ? jumlah : "", statusPay === "Lunas" ? "LUNAS" : "MENUNGGAK" ]
+    ]);
   };
 
   const handleCreateRequest = (
@@ -325,22 +543,55 @@ export default function App() {
   ) => {
     if (!session) return;
     const defaultSchool = session.role === "admin" ? (targetSchool || "SMA Lazuardi") : (session.sekolahName || "SMA Lazuardi");
+    const tglToday = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }).replace(/\s/g, "-");
     const newReq: PartnerRequest = {
       id: `req-${Date.now()}`,
       sekolahMitra: defaultSchool,
       tipeRequest: tipe,
       deskripsi: deskripsi,
-      tanggal: new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }).replace(/\s/g, "-"),
+      tanggal: tglToday,
       statusApproved: session.role === "admin" ? "Setuju" : "Menunggu",
       items: items
     };
     setRequests((prev) => [newReq, ...prev]);
+
+    // Push back dynamically to Google Sheet
+    // Columns: Sekolah, Request, Tanggal Masuk, Tanggal Selesai, Status, Tipe
+    writeToSpreadsheet("REQUEST MITRA", [
+      [ defaultSchool, deskripsi, tglToday, "", session.role === "admin" ? "Setuju" : "Menunggu", tipe ]
+    ]);
   };
 
   const handleUpdateRequestStatus = (id: string, newStatus: "Setuju" | "Ditolak") => {
     setRequests((prev) =>
       prev.map((req) => (req.id === id ? { ...req, statusApproved: newStatus } : req))
     );
+  };
+
+  const handleCreateKPI = (newKpiData: Omit<KPIMitra, "id" | "progress">) => {
+    const kpiId = `kpi-${newKpiData.idKpi.replace(/\./g, "-")}-${Date.now()}`;
+    const progressRate = newKpiData.target > 0 ? Math.round((newKpiData.realisasi / newKpiData.target) * 100) : 0;
+    const finalKpi: KPIMitra = {
+      ...newKpiData,
+      id: kpiId,
+      progress: progressRate > 100 ? 100 : progressRate
+    };
+    setKpis((prev) => [finalKpi, ...prev]);
+
+    // Push back dynamically to Google Sheet KPI MITRA
+    writeToSpreadsheet("KPI MITRA", [
+      [
+        newKpiData.idKpi,
+        newKpiData.kategori,
+        newKpiData.kpi,
+        newKpiData.program,
+        newKpiData.target,
+        newKpiData.realisasi,
+        newKpiData.satuan,
+        `${progressRate}%`,
+        newKpiData.tahunAjaran
+      ]
+    ]);
   };
 
   const handleCreateEvent = (
@@ -394,7 +645,20 @@ export default function App() {
 
   // If user is not logged in, prompt the Login Screen beautifully
   if (!session) {
-    return <LoginScreen onLoginSuccess={handleLogin} schools={schoolList} users={users} />;
+    return (
+      <LoginScreen
+        onLoginSuccess={handleLogin}
+        schools={schoolList}
+        users={users}
+        lang={lang}
+        onLangChange={setLang}
+        onUpdateUserPassword={(userId, newPass) => {
+          setUsers((prev) =>
+            prev.map((u) => (u.id === userId ? { ...u, password: newPass } : u))
+          );
+        }}
+      />
+    );
   }
 
   // Side bar Navigation items with icons, filtered by Roles
@@ -427,6 +691,12 @@ export default function App() {
       id: "events",
       label: t.events,
       icon: Calendar,
+      adminOnly: false,
+    },
+    {
+      id: "kpis",
+      label: t.kpiMitra || "KPI Mitra",
+      icon: Award,
       adminOnly: false,
     },
     {
@@ -585,9 +855,9 @@ export default function App() {
             <div>
               <div className="flex items-center gap-2.5">
                 <h1 className="text-2xl font-extrabold text-slate-800 tracking-tight">
-                  {activeTab === "overview" && (lang === "id" ? "Dashboard Pengawasan Internal" : "Internal Supervision Dashboard")}
+                  {activeTab === "overview" && (lang === "id" ? "Dashboard Monitoring" : "Monitoring Dashboard")}
                   {activeTab === "reports" && (lang === "id" ? "Kelengkapan Laporan Bulanan" : "Monthly Report Status")}
-                  {activeTab === "invoices" && (lang === "id" ? "Modul Keuangan & Invoice" : "Financial & Invoice Module")}
+                  {activeTab === "invoices" && (lang === "id" ? "Invoice & Pembayaran" : "Invoices & Payments")}
                   {activeTab === "requests" && (lang === "id" ? "Aspirasi & Request Mitra" : "Partner Wishes & Requests")}
                   {activeTab === "events" && (lang === "id" ? "Sistem Kalender Audit & Bimtek" : "Audit & Technical Guidance Calendar")}
                   {activeTab === "users" && (lang === "id" ? "Kelola Kredensial & Pengguna" : "User Security & Accounts")}
@@ -642,9 +912,32 @@ export default function App() {
                 <ArrowUpRight className="w-3 h-3 opacity-60" />
               </a>
 
+              {/* Google Sheets Connection Badge (Bidirectional Sync Indicator) */}
+              {googleToken ? (
+                <button
+                  id="disconnect-google-btn"
+                  onClick={handleDisconnectGoogle}
+                  className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-3 py-2 rounded-xl font-bold transition-all shadow-xs"
+                  title="Hubungan Google aktif. Klik untuk memutuskan koneksi."
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-xs font-bold text-emerald-800">SINKRON</span>
+                </button>
+              ) : (
+                <button
+                  id="connect-google-btn"
+                  onClick={handleGoogleLogin}
+                  className="flex items-center gap-1.5 text-xs text-slate-600 bg-white hover:bg-slate-100 border border-slate-200 px-3 py-2 rounded-xl font-bold transition-all shadow-xs"
+                  title="Hubungkan Google Sheets untuk Sinkronisasi 2 Arah"
+                >
+                  <Link2 className="w-3.5 h-3.5 text-blue-600 animate-bounce" />
+                  <span className="text-xs font-bold text-slate-700">Hubungkan Sheet</span>
+                </button>
+              )}
+
               <button
                 id="sync-sheet-btn"
-                onClick={fetchReports}
+                onClick={syncAllData}
                 disabled={refreshing || source === "loading"}
                 className="p-2 hover:bg-slate-50 bg-white border border-slate-200/80 rounded-xl transition-all cursor-pointer text-slate-600 disabled:opacity-50 flex items-center gap-1.5 shadow-xs"
                 title={t.syncText}
@@ -663,46 +956,113 @@ export default function App() {
           ) : (
             <div className="space-y-6">
               
+              {/* PAGE TAB 1 FILTER SYSTEM: YEAR & ACADEMIC YEAR (OVERVIEW FILTER BAR) */}
+              {activeTab === "overview" && (
+                <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-blue-50 text-blue-900 rounded-xl">
+                      <Sliders className="w-5 h-5 text-blue-950" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-extrabold text-blue-950 uppercase tracking-wider">
+                        {lang === "id" ? "Filter Dashboard Ringkasan" : "Summary Dashboard Filters"}
+                      </h3>
+                      <p className="text-[11px] text-slate-400">
+                        {lang === "id" 
+                          ? "Saring metrik & aktivitas berdasarkan tahun kalender atau periode tahun ajaran aktif Lazuardi."
+                          : "Filter metrics & activities based on calendar year or active Lazuardi academic year cycle."}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                    {/* Year Selector Dropdown */}
+                    <div className="bg-slate-50 border border-slate-205 py-1.5 px-3 rounded-2xl flex items-center gap-2 text-xs flex-1 sm:flex-initial">
+                      <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                      <span className="font-bold text-slate-500">{lang === "id" ? "Tahun:" : "Year:"}</span>
+                      <select
+                        value={overviewYear}
+                        onChange={(e) => setOverviewYear(e.target.value)}
+                        className="font-extrabold text-blue-950 bg-transparent border-none focus:outline-none focus:ring-0 cursor-pointer text-xs"
+                      >
+                        <option value="Semua">{lang === "id" ? "Semua Tahun" : "All Years"}</option>
+                        <option value="2022">2022</option>
+                        <option value="2023">2023</option>
+                        <option value="2024">2024</option>
+                        <option value="2025">2025</option>
+                        <option value="2026">2026</option>
+                        <option value="2027">2027</option>
+                      </select>
+                    </div>
+
+                    {/* Academic Year Selector Dropdown */}
+                    <div className="bg-slate-50 border border-slate-205 py-1.5 px-3 rounded-2xl flex items-center gap-2 text-xs flex-1 sm:flex-initial">
+                      <Award className="w-3.5 h-3.5 text-slate-500" />
+                      <span className="font-bold text-slate-500">{lang === "id" ? "TA:" : "AY:"}</span>
+                      <select
+                        value={overviewAcademicYear}
+                        onChange={(e) => setOverviewAcademicYear(e.target.value)}
+                        className="font-extrabold text-blue-950 bg-transparent border-none focus:outline-none focus:ring-0 cursor-pointer text-xs"
+                      >
+                        <option value="Semua">{lang === "id" ? "Semua TA" : "All AY"}</option>
+                        <option value="2022/2023">2022/2023</option>
+                        <option value="2023/2024">2023/2024</option>
+                        <option value="2024/2025">2024/2025</option>
+                        <option value="2025/2026">2025/2026</option>
+                        <option value="2026/2027">2026/2027</option>
+                        <option value="2027/2028">2027/2028</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* PAGE TAB 1: OVERVIEW ANALYTICS (ADMIN ONLY) */}
               {activeTab === "overview" && session.role === "admin" && (
                 <div className="space-y-6 animated-fade-in">
-                  <ReportStats stats={stats} />
+                  {/* Summary Metric Cards */}
+                  <ReportStats stats={overviewStats} />
                   
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-                    <div className="lg:col-span-2 space-y-6">
-                      <ReportChart records={isolatedRecords} />
-                    </div>
-                    
-                    <div className="space-y-6">
-                      <AiAssistant records={isolatedRecords} />
-                      
-                      {/* Interactive Admin Helper tool */}
-                      <div className="p-5 bg-blue-950 border border-yellow-400/10 text-white rounded-3xl relative overflow-hidden shadow-md">
-                        <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-400/5 rounded-full blur-xl pointer-events-none" />
-                        <h3 className="text-sm font-bold text-yellow-300">Pusat Informasi Pengawas</h3>
-                        <p className="text-xs text-slate-350 leading-relaxed mt-2">
-                          Gunakan menu samping untuk memantau detail tagihan keuangan, menyetujui ajuan request sarana BOS, serta membuat jadwal BIMTEK sertifikasi.
-                        </p>
-                      </div>
-                    </div>
+                  {/* Performance charts */}
+                  <div className="bg-white border border-slate-200/80 p-6 rounded-3xl shadow-xs">
+                    <h3 className="text-sm font-extrabold text-slate-900 mb-4">{lang === "id" ? "Tren Kepatuhan Bulanan" : "Monthly Compliance Trend"}</h3>
+                    <ReportChart records={filteredOverviewRecords} />
                   </div>
 
                   {/* Detailed Interactive Compliance Matrix & Visual Analysis per School */}
                   <MitraComplianceTracker 
-                    records={records}
-                    invoices={invoices}
-                    events={events}
+                    records={filteredOverviewRecords}
+                    invoices={filteredOverviewInvoices}
+                    events={filteredOverviewEvents}
                   />
+
+                  {/* AI Assistant & Controller Info Center placed at the BOTTOM */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start pt-4 border-t border-slate-100">
+                    <div className="lg:col-span-2 space-y-6">
+                      <AiAssistant records={filteredOverviewRecords} />
+                    </div>
+                    
+                    <div className="space-y-6">
+                      {/* Interactive Admin Helper tool */}
+                      <div className="p-6 bg-blue-950 border border-yellow-400/10 text-white rounded-3xl relative overflow-hidden shadow-md">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-400/5 rounded-full blur-xl pointer-events-none" />
+                        <h3 className="text-sm font-bold text-yellow-300">Pusat Informasi Pengawas</h3>
+                        <p className="text-xs text-slate-300 leading-relaxed mt-2">
+                          Gunakan menu samping untuk memantau detail tagihan keuangan, menyetujui ajuan request sarana BOS, serta membuat jadwal BIMTEK sertifikasi secara terpusat.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
               {/* PAGE TAB 1: BENCHMARKING COMPARISON (SEKOLAH MITRA ONLY) */}
               {activeTab === "overview" && session.role === "sekolah_mitra" && (
-                <div className="animated-fade-in">
+                <div className="space-y-6 animated-fade-in">
                   <MitraComparison
-                    records={records}
-                    invoices={invoices}
-                    events={events}
+                    records={filteredOverviewRecords}
+                    invoices={filteredOverviewInvoices}
+                    events={filteredOverviewEvents}
                     session={session}
                   />
                 </div>
@@ -823,6 +1183,19 @@ export default function App() {
                     onCreateEvent={handleCreateEvent}
                     onUpdateEvent={handleUpdateEvent}
                     onDeleteEvent={handleDeleteEvent}
+                  />
+                </div>
+              )}
+
+              {/* PAGE TAB 5b: KPI MITRA METRICS & SLIDERS */}
+              {activeTab === "kpis" && (
+                <div className="animated-fade-in">
+                  <KPIMitraView
+                    kpis={kpis}
+                    session={session}
+                    onAddKPI={handleCreateKPI}
+                    lang={lang}
+                    refreshing={refreshing}
                   />
                 </div>
               )}

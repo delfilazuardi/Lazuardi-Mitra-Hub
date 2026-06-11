@@ -1,4 +1,4 @@
-import { ReportRecord } from "./types";
+import { ReportRecord, KPIMitra } from "./types";
 
 export const fallbackReports: ReportRecord[] = [
   // --- JULI 2025 ---
@@ -133,3 +133,127 @@ export const fallbackReports: ReportRecord[] = [
   { id: "mei-2026-sma-lazuardi", bulan: "Mei", tahun: 2026, sekolahMitra: "SMA Lazuardi", tanggalKirim: "2-Jun-2026", statusLaporan: "Sudah Kirim", statusAudit: "Selesai" },
   { id: "mei-2026-tursina", bulan: "Mei", tahun: 2026, sekolahMitra: "Tursina", tanggalKirim: "", statusLaporan: "Belum Kirim", statusAudit: "-" },
 ];
+
+export const fallbackKPIs: KPIMitra[] = [
+  {
+    id: "kpi-1-1-fb",
+    idKpi: "1.1",
+    kategori: "Strategic Alignment",
+    kpi: "Roadmap Coverage",
+    program: "LATOF Akademik, LATOF Bisnis, RAKER",
+    target: 100,
+    realisasi: 85,
+    satuan: "%",
+    progress: 85,
+    tahunAjaran: "2025/2026"
+  },
+  {
+    id: "kpi-1-2-fb",
+    idKpi: "1.2",
+    kategori: "Governance",
+    kpi: "Governance Review",
+    program: "Internal Audit Review",
+    target: 100,
+    realisasi: 60,
+    satuan: "%",
+    progress: 60,
+    tahunAjaran: "2025/2026"
+  },
+  {
+    id: "kpi-1-3-fb",
+    idKpi: "1.3",
+    kategori: "Data & Dashboard",
+    kpi: "Data Submission",
+    program: "Dashboard Mitra",
+    target: 100,
+    realisasi: 95,
+    satuan: "%",
+    progress: 95,
+    tahunAjaran: "2025/2026"
+  },
+  {
+    id: "kpi-1-4-fb",
+    idKpi: "1.4",
+    kategori: "Financial",
+    kpi: "Financial Report",
+    program: "Laporan Bulanan",
+    target: 100,
+    realisasi: 90,
+    satuan: "%",
+    progress: 90,
+    tahunAjaran: "2025/2026"
+  },
+  {
+    id: "kpi-2-1-fb",
+    idKpi: "2.1",
+    kategori: "Partner Support",
+    kpi: "SLA Compliance",
+    program: "Visitasi, Magang, Control Alignment Visitasi, Control Alignment Magang",
+    target: 100,
+    realisasi: 75,
+    satuan: "%",
+    progress: 75,
+    tahunAjaran: "2025/2026"
+  },
+  {
+    id: "kpi-2-2-fb",
+    idKpi: "2.2",
+    kategori: "Needs Development",
+    kpi: "JNA Coverage",
+    program: "LATOF Akademik, LATOF Bisnis, RAKER",
+    target: 100,
+    realisasi: 50,
+    satuan: "%",
+    progress: 50,
+    tahunAjaran: "2024/2025"
+  },
+  {
+    id: "kpi-2-3-fb",
+    idKpi: "2.3",
+    kategori: "MER",
+    kpi: "MER Timeliness",
+    program: "Progression Test, Checkpoint Test, Konsultasi Mitra",
+    target: 100,
+    realisasi: 100,
+    satuan: "%",
+    progress: 100,
+    tahunAjaran: "2024/2025"
+  },
+  {
+    id: "kpi-2-4-fb",
+    idKpi: "2.4",
+    kategori: "Project Management",
+    kpi: "Project Delivery",
+    program: "Visitasi, Magang, Control Alignment Visitasi & Magang",
+    target: 100,
+    realisasi: 40,
+    satuan: "%",
+    progress: 40,
+    tahunAjaran: "2023/2024"
+  },
+  {
+    id: "kpi-2-5-fb",
+    idKpi: "2.5",
+    kategori: "Program Quality",
+    kpi: "Program Execution",
+    program: "SPARK, STEP UP, ToT Coach , Training Best Practice",
+    target: 100,
+    realisasi: 100,
+    satuan: "%",
+    progress: 100,
+    tahunAjaran: "2023/2024"
+  },
+  {
+    id: "kpi-3-1-fb",
+    idKpi: "3.1",
+    kategori: "Ethics",
+    kpi: "Complaint Resolution",
+    program: "Konsultasi Aliansi Mitra Pusat",
+    target: 100,
+    realisasi: 100,
+    satuan: "%",
+    progress: 100,
+    tahunAjaran: "2022/2023"
+  }
+];
+

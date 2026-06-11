@@ -3,7 +3,7 @@ export const translations = {
     // Navigation & General
     overview: "Dashboard Ringkasan",
     reports: "Laporan Bulanan",
-    invoices: "Invoice Pembayaran",
+    invoices: "Invoice & Pembayaran",
     requests: "Request Mitra",
     events: "Event Tracker",
     users: "Kelola Pengguna",
@@ -17,7 +17,7 @@ export const translations = {
     // Header & Banner Info
     isolatedAccess: "Akses Terisolasi",
     multiSchoolAccess: "Akses Multi-Sekolah",
-    adminSub: "Sistem pengawasan Lazuardi Group terintegrasi dengan 10 sekolah mitra nasional.",
+    adminSub: "Pusat informasi dan monitoring Sekolah Mitra Lazuardi.",
     mitraSub: "Anda masuk sebagai bendahara {schoolName}. Seluruh data dibatasi demi keamanan instansi.",
     offlineStableText: "Sistem Lokal Stabil: Data monitoring Lazuardi Mitra Hub dimuat dari basis data cadangan inkremental.",
     loadingSystem: "Menyusun tatanan dashboard interaktif...",
@@ -73,13 +73,14 @@ export const translations = {
     complianceRate: "Rasio Kelengkapan",
     selesaiAudit: "Laporan Selesai Audit",
     perluRevisi: "Laporan Perlu Revisi",
-    belumAudit: "Laporan Belum Diaudit"
+    belumAudit: "Laporan Belum Diaudit",
+    kpiMitra: "KPI Mitra"
   },
   en: {
     // Navigation & General
     overview: "Dashboard Summary",
     reports: "Monthly Reports",
-    invoices: "Payment Invoices",
+    invoices: "Invoices & Payments",
     requests: "Partner Requests",
     events: "Event Tracker",
     users: "User Management",
@@ -93,7 +94,7 @@ export const translations = {
     // Header & Banner Info
     isolatedAccess: "Isolated Access",
     multiSchoolAccess: "Multi-School Access",
-    adminSub: "Lazuardi Group supervision system integrated with 10 national partner schools.",
+    adminSub: "Pusat informasi dan monitoring Sekolah Mitra Lazuardi.",
     mitraSub: "You are logged in as treasurer of {schoolName}. All data is secured for institutional safety.",
     offlineStableText: "Stable Local System: Lazuardi Mitra Hub monitoring data loaded from incremental backup database.",
     loadingSystem: "Arranging interactive dashboard layout...",
@@ -149,6 +150,7 @@ export const translations = {
     complianceRate: "Compliance Rate",
     selesaiAudit: "Audited Reports",
     perluRevisi: "Revision Required",
-    belumAudit: "Unaudited Reports"
+    belumAudit: "Unaudited Reports",
+    kpiMitra: "KPI Mitra"
   }
 };

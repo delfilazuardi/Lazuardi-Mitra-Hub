@@ -79,3 +79,28 @@ export interface EventTracker {
   deskripsi: string;
 }
 
+export interface KPIMitra {
+  id: string;
+  idKpi: string;
+  kategori: string;
+  kpi: string;
+  program: string;
+  target: number;
+  realisasi: number;
+  satuan: string;
+  progress: number;
+  tahunAjaran: string;
+}
+
+export interface KPIActivity {
+  id: string;
+  tanggal: string;
+  tahun: string;
+  program: string;
+  detail: string;
+  idKpi: string;
+  status: string;
+  bobot: string;
+}
+
+

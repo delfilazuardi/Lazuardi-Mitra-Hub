@@ -24,6 +24,9 @@ export default function InvoiceList({ invoices, session, schools = [], onUpdateI
   const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
 
+  // Active category navigation tab
+  const [activeCategoryTab, setActiveCategoryTab] = useState<"Semua" | "Franchise" | "Renewal" | "Jenjang">("Semua");
+
   // Add invoice form states
   const [showAddModal, setShowAddModal] = useState(false);
   const [newInvoiceNo, setNewInvoiceNo] = useState("");
@@ -31,6 +34,7 @@ export default function InvoiceList({ invoices, session, schools = [], onUpdateI
   const [newDeskripsi, setNewDeskripsi] = useState("");
   const [newSekolah, setNewSekolah] = useState("");
   const [newStatus, setNewStatus] = useState<"Lunas" | "Belum Lunas">("Belum Lunas");
+  const [newCategory, setNewCategory] = useState<"Franchise" | "Renewal" | "Jenjang">("Franchise");
 
   const handleOpenAddModal = () => {
     const generatedNo = "INV-" + Date.now().toString().slice(-6);
@@ -39,6 +43,7 @@ export default function InvoiceList({ invoices, session, schools = [], onUpdateI
     setNewDeskripsi("");
     setNewSekolah(session.role === "sekolah_mitra" ? (session.sekolahName || "") : (schools[0] || "SMA Lazuardi"));
     setNewStatus("Belum Lunas");
+    setNewCategory("Franchise");
     setShowAddModal(true);
   };
 
@@ -49,8 +54,19 @@ export default function InvoiceList({ invoices, session, schools = [], onUpdateI
     const amountVal = parseFloat(cleanNum) || 0;
     const formattedDate = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }).replace(/\s/g, "-");
     
+    let finalDesc = newDeskripsi || "Iuran Biaya Monitoring";
+    if (newCategory === "Renewal") {
+      finalDesc = "Renewal Fee Iuran Mitra - " + finalDesc;
+    } else if (newCategory === "Jenjang") {
+      finalDesc = "Pembayaran Franchise Fee Pembukaan Jenjang Baru - " + finalDesc;
+    } else {
+      if (!finalDesc.toLowerCase().includes("franchise")) {
+        finalDesc = "Franchise Fee Bulanan - " + finalDesc;
+      }
+    }
+
     if (onCreateInvoice) {
-      onCreateInvoice(newInvoiceNo, newSekolah, amountVal, formattedDate, newStatus, newDeskripsi || "Iuran Biaya Monitoring");
+      onCreateInvoice(newInvoiceNo, newSekolah, amountVal, formattedDate, newStatus, finalDesc);
     }
     setShowAddModal(false);
   };
@@ -58,13 +74,33 @@ export default function InvoiceList({ invoices, session, schools = [], onUpdateI
   const isMitra = session.role === "sekolah_mitra";
   const userSchool = session.sekolahName;
 
-  // Filter invoices based on credentials
+  // Classify invoice category
+  const getCategory = (inv: Invoice): "Franchise" | "Renewal" | "Jenjang" => {
+    const desc = (inv.deskripsi || "").toLowerCase();
+    const id = (inv.id || "").toLowerCase();
+    if (id.startsWith("inv-ren-") || desc.includes("renewal")) {
+      return "Renewal";
+    }
+    if (id.startsWith("inv-jenj-") || desc.includes("jenjang")) {
+      return "Jenjang";
+    }
+    return "Franchise";
+  };
+
+  // Filter invoices based on credentials & selected category tab
   const filteredInvoices = useMemo(() => {
     return invoices.filter((inv) => {
       // Permission filtering
       if (isMitra && inv.sekolahMitra !== userSchool) {
         return false;
       }
+
+      // Tab category filtering
+      const cat = getCategory(inv);
+      if (activeCategoryTab === "Franchise" && cat !== "Franchise") return false;
+      if (activeCategoryTab === "Renewal" && cat !== "Renewal") return false;
+      if (activeCategoryTab === "Jenjang" && cat !== "Jenjang") return false;
+
       // Text searching
       const matchSearch =
         inv.sekolahMitra.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -75,25 +111,29 @@ export default function InvoiceList({ invoices, session, schools = [], onUpdateI
 
       return matchSearch && matchStatus;
     });
-  }, [invoices, session, searchTerm, statusFilter, isMitra, userSchool]);
+  }, [invoices, session, searchTerm, statusFilter, isMitra, userSchool, activeCategoryTab]);
 
-  // Aggregate stats
-  const stats = useMemo(() => {
+  // Aggregate stats separated by Fee Categories
+  const categoryStats = useMemo(() => {
     const relevantInvoices = invoices.filter((inv) => !isMitra || inv.sekolahMitra === userSchool);
-    const totalCount = relevantInvoices.length;
-    const lunasCount = relevantInvoices.filter((inv) => inv.statusPay === "Lunas").length;
-    const lunasAmount = relevantInvoices
-      .filter((inv) => inv.statusPay === "Lunas")
-      .reduce((sum, current) => sum + current.jumlah, 0);
-    const tunggakanAmount = relevantInvoices
-      .filter((inv) => inv.statusPay === "Belum Lunas")
-      .reduce((sum, current) => sum + current.jumlah, 0);
+    
+    const getStatsList = (list: Invoice[]) => {
+      const totalTagihan = list.reduce((sum, item) => sum + item.jumlah, 0);
+      const totalPembayaran = list.filter(item => item.statusPay === "Lunas").reduce((sum, item) => sum + item.jumlah, 0);
+      const totalTunggakan = list.filter(item => item.statusPay === "Belum Lunas").reduce((sum, item) => sum + item.jumlah, 0);
+      const rasio = totalTagihan > 0 ? Math.round((totalPembayaran / totalTagihan) * 100) : 0;
+      return { totalTagihan, totalPembayaran, totalTunggakan, rasio, count: list.length };
+    };
+
+    const ffList = relevantInvoices.filter(inv => getCategory(inv) === "Franchise");
+    const renewalList = relevantInvoices.filter(inv => getCategory(inv) === "Renewal");
+    const jenjangList = relevantInvoices.filter(inv => getCategory(inv) === "Jenjang");
 
     return {
-      totalCount,
-      lunasCount,
-      lunasAmount,
-      tunggakanAmount
+      ff: getStatsList(ffList),
+      renewal: getStatsList(renewalList),
+      jenjang: getStatsList(jenjangList),
+      all: getStatsList(relevantInvoices)
     };
   }, [invoices, isMitra, userSchool]);
 
@@ -125,63 +165,146 @@ export default function InvoiceList({ invoices, session, schools = [], onUpdateI
   return (
     <div id="invoice-component-root" className="space-y-6">
       
-      {/* Financial Aggregations Banner (Blue & Yellow highlights) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-5 bg-blue-900 border border-blue-800 text-white rounded-2xl shadow-xs flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-xs font-bold text-yellow-300 uppercase tracking-widest">Dana Lunas Terverifikasi</span>
-            <div className="p-2 bg-blue-800 rounded-xl text-yellow-400">
-              <Check className="w-4 h-4" />
+      {/* Separated Payment Category Stat Cards Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* FRANCHISE FEE STATS */}
+        <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-xs flex flex-col justify-between relative overflow-hidden group hover:border-blue-900/40 transition-all">
+          <div className="absolute top-0 left-0 w-2 h-full bg-blue-900" />
+          <div>
+            <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5">
+              <span className="text-xs font-extrabold text-blue-950 uppercase tracking-widest flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-blue-900" />
+                Franchise Fee
+              </span>
+              <span className="text-[10px] font-extrabold bg-blue-50 text-blue-900 px-2 py-0.5 rounded-lg">
+                {categoryStats.ff.count} Invoice
+              </span>
+            </div>
+            
+            <div className="space-y-2 mt-4">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Total Tagihan</span>
+                <span className="font-extrabold text-slate-800 font-mono">{formatRupiah(categoryStats.ff.totalTagihan)}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Total Pembayaran</span>
+                <span className="font-extrabold text-emerald-600 font-mono">{formatRupiah(categoryStats.ff.totalPembayaran)}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Total Tunggakan</span>
+                <span className="font-extrabold text-amber-600 font-mono">{formatRupiah(categoryStats.ff.totalTunggakan)}</span>
+              </div>
             </div>
           </div>
-          <div className="mt-4">
-            <span className="text-2xl font-extrabold tracking-tight block text-yellow-300 font-mono">
-              {formatRupiah(stats.lunasAmount)}
-            </span>
-            <span className="text-[10px] text-blue-200 block mt-1">
-              Dari {stats.lunasCount} invoice yang tuntas disubmit
-            </span>
+
+          <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Rasio Terpenuhi</span>
+            <div className="flex items-center gap-2">
+              <div className="w-24 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                <div 
+                  className="bg-blue-900 h-full rounded-full transition-all duration-500" 
+                  style={{ width: `${categoryStats.ff.rasio}%` }}
+                />
+              </div>
+              <span className="text-xs font-extrabold text-slate-700 font-mono bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">{categoryStats.ff.rasio}%</span>
+            </div>
           </div>
         </div>
 
-        <div className="p-5 bg-white border border-slate-100 rounded-2xl shadow-xs flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Tertunggak / Tagihan</span>
-            <div className="p-2 bg-amber-50 rounded-xl text-amber-600 border border-amber-100">
-              <AlertCircle className="w-4 h-4" />
+        {/* RENEWAL FEE STATS */}
+        <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-xs flex flex-col justify-between relative overflow-hidden group hover:border-teal-500/40 transition-all">
+          <div className="absolute top-0 left-0 w-2 h-full bg-teal-500" />
+          <div>
+            <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5">
+              <span className="text-xs font-extrabold text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-teal-500" />
+                Renewal Fee
+              </span>
+              <span className="text-[10px] font-extrabold bg-teal-50 text-teal-700 px-2 py-0.5 rounded-lg">
+                {categoryStats.renewal.count} Invoice
+              </span>
+            </div>
+            
+            <div className="space-y-2 mt-4">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Total Tagihan</span>
+                <span className="font-extrabold text-slate-800 font-mono">{formatRupiah(categoryStats.renewal.totalTagihan)}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Total Pembayaran</span>
+                <span className="font-extrabold text-emerald-600 font-mono">{formatRupiah(categoryStats.renewal.totalPembayaran)}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Total Tunggakan</span>
+                <span className="font-extrabold text-amber-600 font-mono">{formatRupiah(categoryStats.renewal.totalTunggakan)}</span>
+              </div>
             </div>
           </div>
-          <div className="mt-4">
-            <span className="text-2xl font-extrabold tracking-tight text-slate-800 block font-mono">
-              {formatRupiah(stats.tunggakanAmount)}
-            </span>
-            <span className="text-[10px] text-amber-600 font-semibold block mt-1">
-              Menunggu Pelunasan Administrasi
-            </span>
+
+          <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Rasio Terpenuhi</span>
+            <div className="flex items-center gap-2">
+              <div className="w-24 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                <div 
+                  className="bg-teal-500 h-full rounded-full transition-all duration-500" 
+                  style={{ width: `${categoryStats.renewal.rasio}%` }}
+                />
+              </div>
+              <span className="text-xs font-extrabold text-slate-700 font-mono bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">{categoryStats.renewal.rasio}%</span>
+            </div>
           </div>
         </div>
 
-        <div className="p-5 bg-white border border-slate-100 rounded-2xl shadow-xs flex flex-col justify-between">
-          <div className="flex items-start justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Rasio Pembayaran Terpenuhi</span>
-            <div className="p-2 bg-blue-50 text-blue-800 rounded-xl">
-              <TrendingUp className="w-4 h-4 text-blue-900" />
+        {/* JENJANG BARU STATS */}
+        <div className="bg-white border border-slate-200/80 rounded-3xl p-5 shadow-xs flex flex-col justify-between relative overflow-hidden group hover:border-violet-600/40 transition-all">
+          <div className="absolute top-0 left-0 w-2 h-full bg-violet-600" />
+          <div>
+            <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2.5">
+              <span className="text-xs font-extrabold text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-violet-600" />
+                Jenjang Baru Fee
+              </span>
+              <span className="text-[10px] font-extrabold bg-violet-50 text-violet-700 px-2 py-0.5 rounded-lg">
+                {categoryStats.jenjang.count} Invoice
+              </span>
+            </div>
+            
+            <div className="space-y-2 mt-4">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Total Tagihan</span>
+                <span className="font-extrabold text-slate-800 font-mono">{formatRupiah(categoryStats.jenjang.totalTagihan)}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Total Pembayaran</span>
+                <span className="font-extrabold text-emerald-600 font-mono">{formatRupiah(categoryStats.jenjang.totalPembayaran)}</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-slate-400 font-bold">Total Tunggakan</span>
+                <span className="font-extrabold text-amber-600 font-mono">{formatRupiah(categoryStats.jenjang.totalTunggakan)}</span>
+              </div>
             </div>
           </div>
-          <div className="mt-4">
-            <span className="text-2xl font-extrabold tracking-tight text-slate-800 block font-mono">
-              {stats.totalCount > 0 ? Math.round((stats.lunasCount / stats.totalCount) * 100) : 0}%
-            </span>
-            <span className="text-[10px] text-slate-400 block mt-1">
-              {stats.lunasCount} dari {stats.totalCount} invoice aktif
-            </span>
+
+          <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">Rasio Terpenuhi</span>
+            <div className="flex items-center gap-2">
+              <div className="w-24 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                <div 
+                  className="bg-violet-600 h-full rounded-full transition-all duration-500" 
+                  style={{ width: `${categoryStats.jenjang.rasio}%` }}
+                />
+              </div>
+              <span className="text-xs font-extrabold text-slate-700 font-mono bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">{categoryStats.jenjang.rasio}%</span>
+            </div>
           </div>
         </div>
+
       </div>
 
       {/* Database control layout */}
-      <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="bg-white border border-slate-200/85 rounded-3xl p-6 shadow-xs">
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-6">
           <div>
             <h2 className="text-lg font-bold text-slate-800 tracking-tight">Invoice Dan Iuran Administrasional</h2>
             <p className="text-xs text-slate-400 mt-1">
@@ -191,7 +314,7 @@ export default function InvoiceList({ invoices, session, schools = [], onUpdateI
             </p>
           </div>
 
-          <div className="flex items-center gap-3 self-start md:self-auto flex-wrap">
+          <div className="flex flex-wrap items-center gap-3 self-start xl:self-auto">
             <button
               onClick={handleOpenAddModal}
               className="bg-blue-900 hover:bg-blue-800 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
@@ -200,27 +323,64 @@ export default function InvoiceList({ invoices, session, schools = [], onUpdateI
               Buat Invoice Baru
             </button>
 
+            {/* Main Categories Division Tabs */}
+            <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/50">
+              <button
+                onClick={() => setActiveCategoryTab("Semua")}
+                className={`text-slate-600 font-bold text-xs px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                  activeCategoryTab === "Semua" ? "bg-white text-blue-950 shadow-xs font-extrabold" : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                Semua ({categoryStats.all.count})
+              </button>
+              <button
+                onClick={() => setActiveCategoryTab("Franchise")}
+                className={`text-slate-600 font-bold text-xs px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                  activeCategoryTab === "Franchise" ? "bg-white text-blue-950 shadow-xs font-extrabold" : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                Franchise Fee ({categoryStats.ff.count})
+              </button>
+              <button
+                onClick={() => setActiveCategoryTab("Renewal")}
+                className={`text-slate-600 font-bold text-xs px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                  activeCategoryTab === "Renewal" ? "bg-white text-blue-950 shadow-xs font-extrabold" : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                Renewal Fee ({categoryStats.renewal.count})
+              </button>
+              <button
+                onClick={() => setActiveCategoryTab("Jenjang")}
+                className={`text-slate-600 font-bold text-xs px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                  activeCategoryTab === "Jenjang" ? "bg-white text-blue-950 shadow-xs font-extrabold" : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                Jenjang Baru ({categoryStats.jenjang.count})
+              </button>
+            </div>
+
+            {/* Pay Status filters */}
             <div className="flex bg-slate-50 p-1 rounded-xl border border-slate-100/80">
               <button
                 onClick={() => setStatusFilter("Semua")}
-                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
-                  statusFilter === "Semua" ? "bg-blue-900 text-white shadow-xs" : "text-slate-400 hover:text-slate-600"
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  statusFilter === "Semua" ? "bg-blue-900 text-white shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-800"
                 }`}
               >
-                Semua
+                Semua Status
               </button>
               <button
                 onClick={() => setStatusFilter("Lunas")}
-                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
-                  statusFilter === "Lunas" ? "bg-blue-900 text-white shadow-xs" : "text-slate-400 hover:text-slate-600"
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  statusFilter === "Lunas" ? "bg-emerald-600 text-white shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-800"
                 }`}
               >
                 Lunas
               </button>
               <button
                 onClick={() => setStatusFilter("Belum Lunas")}
-                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all ${
-                  statusFilter === "Belum Lunas" ? "bg-blue-900 text-white shadow-xs" : "text-slate-400 hover:text-slate-600"
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  statusFilter === "Belum Lunas" ? "bg-amber-600 text-white shadow-xs font-extrabold" : "text-slate-500 hover:text-slate-800"
                 }`}
               >
                 Belum Lunas
@@ -455,6 +615,19 @@ export default function InvoiceList({ invoices, session, schools = [], onUpdateI
                   className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-hidden font-medium text-slate-700"
                   placeholder="e.g. Pembayaran Evaluasi Kurikulum atau Dana BOS Triwulan"
                 />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1.5">Kategori Tagihan</label>
+                <select
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value as any)}
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-hidden font-medium text-slate-700 cursor-pointer"
+                >
+                  <option value="Franchise">Franchise Fee</option>
+                  <option value="Renewal">Renewal Fee</option>
+                  <option value="Jenjang">Jenjang Baru</option>
+                </select>
               </div>
 
               <div>
