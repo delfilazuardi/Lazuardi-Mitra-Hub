@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dns from "dns";
+import fs from "fs";
 
 // Ensure localhost is resolved first
 dns.setDefaultResultOrder("ipv4first");
@@ -11,6 +12,38 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json());
+
+// Local server-side persistence for custom dashboard creations/modifications
+const CUSTOM_DATA_FILE = path.join(process.cwd(), "custom_data.json");
+
+function readCustomData() {
+  try {
+    if (fs.existsSync(CUSTOM_DATA_FILE)) {
+      const data = fs.readFileSync(CUSTOM_DATA_FILE, "utf-8");
+      const parsed = JSON.parse(data);
+      return {
+        reports: parsed.reports || [],
+        invoices: parsed.invoices || [],
+        requests: parsed.requests || [],
+        kpis: parsed.kpis || [],
+        events: parsed.events || []
+      };
+    }
+  } catch (err) {
+    console.error("Failed to read custom_data.json, using empty dataset:", err);
+  }
+  return { reports: [], invoices: [], requests: [], kpis: [], events: [] };
+}
+
+function saveCustomData(data: any) {
+  try {
+    fs.writeFileSync(CUSTOM_DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
+    return true;
+  } catch (err) {
+    console.error("Failed to write custom_data.json:", err);
+    return false;
+  }
+}
 
 // Initialize Gemini Client safely
 let ai: GoogleGenAI | null = null;
@@ -83,44 +116,72 @@ function excelSerialToDateString(serial: any): string {
 app.get("/api/reports", async (req, res) => {
   try {
     const workbook = await getWorkbook();
+    let mappedReports: any[] = [];
     const sheet = workbook.Sheets["LAPORAN BULANAN"];
+    
     if (!sheet) {
-      return res.json({ success: true, source: "fallback", data: fallbackReports });
+      mappedReports = JSON.parse(JSON.stringify(fallbackReports));
+    } else {
+      const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+      mappedReports = rows.map((row: any, i) => {
+        const bulan = row["Bulan"] || "";
+        const tahun = parseInt(row["Tahun "]) || 2025;
+        const sekolahMitra = (row["Sekolah Mitra"] || "").trim();
+        const tglKirimRaw = row["Tanggal Kirim"];
+        const tanggalKirim = tglKirimRaw ? excelSerialToDateString(tglKirimRaw) : "";
+        
+        let statusLaporan = (row["Status Laporan "] || "").trim();
+        let statusAudit = (row["Status Audit"] || "").trim();
+        
+        if (!statusLaporan) {
+          statusLaporan = tanggalKirim ? "Sudah Kirim" : "Belum Kirim";
+        }
+        if (!statusAudit) {
+          statusAudit = statusLaporan === "Sudah Kirim" ? "Belum Diaudit" : "-";
+        }
+        
+        return {
+          id: `rep-${bulan}-${tahun}-${sekolahMitra.replace(/\s+/g, "-").toLowerCase()}`,
+          bulan,
+          tahun,
+          sekolahMitra,
+          tanggalKirim,
+          statusLaporan,
+          statusAudit
+        };
+      }).filter(r => r.sekolahMitra);
     }
 
-    const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-    const mappedReports = rows.map((row: any, i) => {
-      const bulan = row["Bulan"] || "";
-      const tahun = parseInt(row["Tahun "]) || 2025;
-      const sekolahMitra = (row["Sekolah Mitra"] || "").trim();
-      const tglKirimRaw = row["Tanggal Kirim"];
-      const tanggalKirim = tglKirimRaw ? excelSerialToDateString(tglKirimRaw) : "";
-      
-      let statusLaporan = (row["Status Laporan "] || "").trim();
-      let statusAudit = (row["Status Audit"] || "").trim();
-      
-      if (!statusLaporan) {
-        statusLaporan = tanggalKirim ? "Sudah Kirim" : "Belum Kirim";
-      }
-      if (!statusAudit) {
-        statusAudit = statusLaporan === "Sudah Kirim" ? "Belum Diaudit" : "-";
-      }
-      
-      return {
-        id: `rep-${bulan}-${tahun}-${sekolahMitra.replace(/\s+/g, "-").toLowerCase()}-${i}`,
-        bulan,
-        tahun,
-        sekolahMitra,
-        tanggalKirim,
-        statusLaporan,
-        statusAudit
-      };
-    }).filter(r => r.sekolahMitra);
+    const customData = readCustomData();
+    const mergedReports = [...mappedReports];
 
-    return res.json({ success: true, source: "live", data: mappedReports });
+    customData.reports.forEach((custRep: any) => {
+      const existingIdx = mergedReports.findIndex(
+        (r) => r.id === custRep.id || (r.bulan === custRep.bulan && r.tahun === custRep.tahun && r.sekolahMitra.toLowerCase() === custRep.sekolahMitra.toLowerCase())
+      );
+      if (existingIdx !== -1) {
+        mergedReports[existingIdx] = { ...mergedReports[existingIdx], ...custRep };
+      } else {
+        mergedReports.push(custRep);
+      }
+    });
+
+    return res.json({ success: true, source: "live", data: mergedReports });
   } catch (error: any) {
     console.error("Failed to load reports from spreadsheet. Fallback loaded:", error.message);
-    return res.json({ success: true, source: "fallback", data: fallbackReports });
+    const customData = readCustomData();
+    const mergedReports = JSON.parse(JSON.stringify(fallbackReports));
+    customData.reports.forEach((custRep: any) => {
+      const existingIdx = mergedReports.findIndex(
+        (r) => r.id === custRep.id || (r.bulan === custRep.bulan && r.tahun === custRep.tahun && r.sekolahMitra.toLowerCase() === custRep.sekolahMitra.toLowerCase())
+      );
+      if (existingIdx !== -1) {
+        mergedReports[existingIdx] = { ...mergedReports[existingIdx], ...custRep };
+      } else {
+        mergedReports.push(custRep);
+      }
+    });
+    return res.json({ success: true, source: "fallback", data: mergedReports });
   }
 });
 
@@ -203,10 +264,25 @@ app.get("/api/invoices", async (req, res) => {
       });
     }
 
-    return res.json({ success: true, data: mappedInvoices });
+    const customData = readCustomData();
+    const mergedInvoices = [...mappedInvoices];
+
+    customData.invoices.forEach((custInv: any) => {
+      const existingIdx = mergedInvoices.findIndex(
+        (inv) => inv.id === custInv.id || inv.invoiceNumber === custInv.invoiceNumber
+      );
+      if (existingIdx !== -1) {
+        mergedInvoices[existingIdx] = { ...mergedInvoices[existingIdx], ...custInv };
+      } else {
+        mergedInvoices.push(custInv);
+      }
+    });
+
+    return res.json({ success: true, data: mergedInvoices });
   } catch (error: any) {
     console.error("Failed to load invoices from spreadsheet:", error.message);
-    return res.json({ success: false, error: error.message });
+    const customData = readCustomData();
+    return res.json({ success: true, data: customData.invoices });
   }
 });
 
@@ -214,33 +290,46 @@ app.get("/api/invoices", async (req, res) => {
 app.get("/api/requests", async (req, res) => {
   try {
     const workbook = await getWorkbook();
+    let mappedRequests: any[] = [];
     const reqSheet = workbook.Sheets["REQUEST MITRA"];
-    if (!reqSheet) {
-      return res.json({ success: true, data: [] });
+    
+    if (reqSheet) {
+      const rows: any[] = XLSX.utils.sheet_to_json(reqSheet, { defval: "" });
+      mappedRequests = rows.map((row: any, i) => {
+        const school = (row["Sekolah"] || "").trim();
+        const requestText = row["Request"] || "";
+        const dateIn = row["Tanggal Masuk"] ? excelSerialToDateString(row["Tanggal Masuk"]) : "Unknown Date";
+        const status = (row["Status"] || "Menunggu").trim();
+        const type = row["Tipe"] || "Lainnya";
+        
+        return {
+          id: `req-sheet-${i}`,
+          sekolahMitra: school,
+          tipeRequest: type,
+          deskripsi: requestText,
+          tanggal: dateIn,
+          statusApproved: status === "Setuju" ? "Setuju" : status === "Ditolak" ? "Ditolak" : "Menunggu"
+        };
+      }).filter(r => r.sekolahMitra);
     }
 
-    const rows: any[] = XLSX.utils.sheet_to_json(reqSheet, { defval: "" });
-    const mappedRequests = rows.map((row: any, i) => {
-      const school = (row["Sekolah"] || "").trim();
-      const requestText = row["Request"] || "";
-      const dateIn = row["Tanggal Masuk"] ? excelSerialToDateString(row["Tanggal Masuk"]) : "Unknown Date";
-      const status = (row["Status"] || "Menunggu").trim();
-      const type = row["Tipe"] || "Lainnya";
-      
-      return {
-        id: `req-sheet-${i}`,
-        sekolahMitra: school,
-        tipeRequest: type,
-        deskripsi: requestText,
-        tanggal: dateIn,
-        statusApproved: status === "Setuju" ? "Setuju" : status === "Ditolak" ? "Ditolak" : "Menunggu"
-      };
-    }).filter(r => r.sekolahMitra);
+    const customData = readCustomData();
+    const mergedRequests = [...mappedRequests];
 
-    return res.json({ success: true, data: mappedRequests });
+    customData.requests.forEach((custReq: any) => {
+      const existingIdx = mergedRequests.findIndex((req) => req.id === custReq.id);
+      if (existingIdx !== -1) {
+        mergedRequests[existingIdx] = { ...mergedRequests[existingIdx], ...custReq };
+      } else {
+        mergedRequests.push(custReq);
+      }
+    });
+
+    return res.json({ success: true, data: mergedRequests });
   } catch (error: any) {
     console.error("Failed to load requests from spreadsheet:", error.message);
-    return res.json({ success: false, error: error.message });
+    const customData = readCustomData();
+    return res.json({ success: true, data: customData.requests });
   }
 });
 
@@ -289,62 +378,74 @@ app.get("/api/users-sync", async (req, res) => {
 app.get("/api/kpis", async (req, res) => {
   try {
     const workbook = await getWorkbook();
+    let mappedKpis: any[] = [];
     const sheet = workbook.Sheets["KPI MITRA"];
-    if (!sheet) {
-      return res.json({ success: true, data: [] });
+    
+    if (sheet) {
+      const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+      mappedKpis = rows.map((row: any, i) => {
+        const idKpi = String(row["ID KPI "] || row["ID KPI"] || "").trim();
+        const kategori = String(row["Kategori"] || "").trim();
+        const kpi = String(row["KPI "] || row["KPI"] || "").trim();
+        const program = String(row["Program "] || row["Program"] || "").trim();
+        const target = parseFloat(row["Target"]) || 0;
+        const realisasi = parseFloat(row["Realisasi "]) || parseFloat(row["Realisasi"]) || 0;
+        const satuan = String(row["Satuan "] || row["Satuan"] || "").trim();
+        
+        let progress = 0;
+        if (row["Progress"]) {
+          progress = parseFloat(String(row["Progress"]).replace(/%/g, "")) || 0;
+        } else if (target > 0) {
+          progress = Math.round((realisasi / target) * 100);
+        }
+        if (progress > 100) progress = 100;
+
+        let tahunAjaran = row["Tahun Ajaran"] || row["Tahun"] || "";
+        if (!tahunAjaran) {
+          const val = parseFloat(idKpi);
+          if (isNaN(val)) {
+            tahunAjaran = "2025/2026";
+          } else if (val >= 3.0) {
+            tahunAjaran = "2026/2027";
+          } else if (val >= 2.0) {
+            tahunAjaran = "2024/2025";
+          } else {
+            tahunAjaran = "2025/2026";
+          }
+        }
+
+        return {
+          id: `kpi-${idKpi.replace(/\./g, "-")}-${i}`,
+          idKpi,
+          kategori,
+          kpi,
+          program,
+          target,
+          realisasi,
+          satuan,
+          progress,
+          tahunAjaran
+        };
+      }).filter(r => r.idKpi && r.kpi);
     }
 
-    const rows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-    const mappedKpis = rows.map((row: any, i) => {
-      const idKpi = String(row["ID KPI "] || row["ID KPI"] || "").trim();
-      const kategori = String(row["Kategori"] || "").trim();
-      const kpi = String(row["KPI "] || row["KPI"] || "").trim();
-      const program = String(row["Program "] || row["Program"] || "").trim();
-      const target = parseFloat(row["Target"]) || 0;
-      const realisasi = parseFloat(row["Realisasi "]) || parseFloat(row["Realisasi"]) || 0;
-      const satuan = String(row["Satuan "] || row["Satuan"] || "").trim();
-      
-      let progress = 0;
-      if (row["Progress"]) {
-        progress = parseFloat(String(row["Progress"]).replace(/%/g, "")) || 0;
-      } else if (target > 0) {
-        progress = Math.round((realisasi / target) * 100);
+    const customData = readCustomData();
+    const mergedKpis = [...mappedKpis];
+
+    customData.kpis.forEach((custKpi: any) => {
+      const existingIdx = mergedKpis.findIndex((k) => k.id === custKpi.id || k.idKpi === custKpi.idKpi);
+      if (existingIdx !== -1) {
+        mergedKpis[existingIdx] = { ...mergedKpis[existingIdx], ...custKpi };
+      } else {
+        mergedKpis.push(custKpi);
       }
-      if (progress > 100) progress = 100;
+    });
 
-      // Smart default academic year distribution if none provided
-      let tahunAjaran = row["Tahun Ajaran"] || row["Tahun"] || "";
-      if (!tahunAjaran) {
-        const val = parseFloat(idKpi);
-        if (isNaN(val)) {
-          tahunAjaran = "2025/2026";
-        } else if (val >= 3.0) {
-          tahunAjaran = "2026/2027";
-        } else if (val >= 2.0) {
-          tahunAjaran = "2024/2025";
-        } else {
-          tahunAjaran = "2025/2026";
-        }
-      }
-
-      return {
-        id: `kpi-${idKpi.replace(/\./g, "-")}-${i}`,
-        idKpi,
-        kategori,
-        kpi,
-        program,
-        target,
-        realisasi,
-        satuan,
-        progress,
-        tahunAjaran
-      };
-    }).filter(r => r.idKpi && r.kpi);
-
-    return res.json({ success: true, data: mappedKpis });
+    return res.json({ success: true, data: mergedKpis });
   } catch (error: any) {
     console.error("Failed to load KPIs from spreadsheet:", error.message);
-    return res.json({ success: false, error: error.message });
+    const customData = readCustomData();
+    return res.json({ success: true, data: customData.kpis });
   }
 });
 
@@ -390,6 +491,84 @@ app.get("/api/kpi-activities", async (req, res) => {
     console.error("Failed to load KPI activities from spreadsheet:", error.message);
     return res.json({ success: false, error: error.message });
   }
+});
+
+// API Route: Get local-persisted events
+app.get("/api/events", (req, res) => {
+  const customData = readCustomData();
+  const events = customData.events || [];
+  return res.json({ success: true, data: events });
+});
+
+// API Route: Save custom additions/updates locally so they are persistent and real-time synced
+app.post("/api/save-custom-change", (req, res) => {
+  const { type, data } = req.body;
+  if (!type || !data) {
+    return res.status(400).json({ success: false, error: "Missing change type or data parameters" });
+  }
+
+  const customData = readCustomData();
+
+  if (type === "report") {
+    const listToUpdate = Array.isArray(data) ? data : [data];
+    listToUpdate.forEach((rec: any) => {
+      const idx = customData.reports.findIndex(
+        (r: any) => r.id === rec.id || (r.bulan === rec.bulan && r.tahun === rec.tahun && r.sekolahMitra.toLowerCase() === rec.sekolahMitra.toLowerCase())
+      );
+      if (idx !== -1) {
+        customData.reports[idx] = { ...customData.reports[idx], ...rec };
+      } else {
+        customData.reports.push(rec);
+      }
+    });
+  } else if (type === "invoice") {
+    const listToUpdate = Array.isArray(data) ? data : [data];
+    listToUpdate.forEach((inv: any) => {
+      const idx = customData.invoices.findIndex((i: any) => i.id === inv.id || i.invoiceNumber === inv.invoiceNumber);
+      if (idx !== -1) {
+        customData.invoices[idx] = { ...customData.invoices[idx], ...inv };
+      } else {
+        customData.invoices.push(inv);
+      }
+    });
+  } else if (type === "request") {
+    const listToUpdate = Array.isArray(data) ? data : [data];
+    listToUpdate.forEach((reqItem: any) => {
+      const idx = customData.requests.findIndex((r: any) => r.id === reqItem.id);
+      if (idx !== -1) {
+        customData.requests[idx] = { ...customData.requests[idx], ...reqItem };
+      } else {
+        customData.requests.push(reqItem);
+      }
+    });
+  } else if (type === "kpi") {
+    const listToUpdate = Array.isArray(data) ? data : [data];
+    listToUpdate.forEach((k: any) => {
+      const idx = customData.kpis.findIndex((item: any) => item.id === k.id || item.idKpi === k.idKpi);
+      if (idx !== -1) {
+        customData.kpis[idx] = { ...customData.kpis[idx], ...k };
+      } else {
+        customData.kpis.push(k);
+      }
+    });
+  } else if (type === "event") {
+    const listToUpdate = Array.isArray(data) ? data : [data];
+    listToUpdate.forEach((evt: any) => {
+      const idx = customData.events.findIndex((e: any) => e.id === evt.id);
+      if (idx !== -1) {
+        customData.events[idx] = { ...customData.events[idx], ...evt };
+      } else {
+        customData.events.push(evt);
+      }
+    });
+  } else if (type === "delete-event") {
+    customData.events = customData.events.filter((e: any) => e.id !== data.id);
+  } else {
+    return res.status(400).json({ success: false, error: "Unsupported change type: " + type });
+  }
+
+  const success = saveCustomData(customData);
+  return res.json({ success });
 });
 
 // API Route: Write row dynamically back to the Google Spreadsheet via OAuth Token

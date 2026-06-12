@@ -233,6 +233,22 @@ export default function App() {
     }
   };
 
+  // Push local modifications directly to server local custom database
+  const saveChangeLocally = async (type: string, data: any) => {
+    try {
+      await fetch("/api/save-custom-change", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ type, data })
+      });
+      syncAllData();
+    } catch (err) {
+      console.error("Gagal melakukan penulisan ke database lokal server:", err);
+    }
+  };
+
   // Save changes to cache
   useEffect(() => {
     localStorage.setItem("laz_lang", lang);
@@ -317,6 +333,13 @@ export default function App() {
       const kpiJson = await kpiRes.json();
       if (kpiJson.success && kpiJson.data) {
         setKpis(kpiJson.data);
+      }
+
+      // 6. Fetch Persistent Events
+      const eventsRes = await fetch("/api/events");
+      const eventsJson = await eventsRes.json();
+      if (eventsJson.success && eventsJson.data && eventsJson.data.length > 0) {
+        setEvents(eventsJson.data);
       }
     } catch (err) {
       console.error("Gagal melakukan sinkronisasi data dengan Google Sheet:", err);
@@ -515,9 +538,25 @@ export default function App() {
 
   // Mutation handlers passed to sub-modules
   const handleUpdateInvoiceStatus = (id: string, newStatus: "Lunas" | "Belum Lunas") => {
+    const inv = invoices.find(i => i.id === id);
+    if (!inv) return;
+    const updatedInv = { ...inv, statusPay: newStatus };
     setInvoices((prev) =>
-      prev.map((inv) => (inv.id === id ? { ...inv, statusPay: newStatus } : inv))
+      prev.map((i) => (i.id === id ? updatedInv : i))
     );
+    saveChangeLocally("invoice", updatedInv);
+  };
+
+  const handleUpdateReportStatus = (
+    id: string,
+    statusLaporan: "Sudah Kirim" | "Belum Kirim",
+    statusAudit: "Selesai" | "Revisi" | "Belum Diaudit" | "-"
+  ) => {
+    const record = records.find(r => r.id === id);
+    if (!record) return;
+    const updatedRecord = { ...record, statusLaporan, statusAudit };
+    setRecords(prev => prev.map(r => r.id === id ? updatedRecord : r));
+    saveChangeLocally("report", updatedRecord);
   };
 
   const handleCreateReport = (
@@ -529,7 +568,7 @@ export default function App() {
   ) => {
     const tglStr = statusLaporan === "Sudah Kirim" ? new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }).replace(/\s/g, "-") : "";
     const newRecord: ReportRecord = {
-      id: `rep-${Date.now()}`,
+      id: `rep-${bulan}-${tahun}-${sekolahMitra.replace(/\s+/g, "-").toLowerCase()}`,
       bulan,
       tahun,
       sekolahMitra,
@@ -539,7 +578,8 @@ export default function App() {
     };
     setRecords((prev) => [newRecord, ...prev]);
 
-    // Push back dynamically to Google Sheet
+    saveChangeLocally("report", newRecord);
+
     writeToSpreadsheet("LAPORAN BULANAN", [
       [ bulan, tahun, sekolahMitra, tglStr, statusLaporan, statusAudit ]
     ]);
@@ -554,7 +594,7 @@ export default function App() {
     deskripsi: string
   ) => {
     const newInv: Invoice = {
-      id: `inv-${Date.now()}`,
+      id: `inv-${invoiceNumber}-${Date.now()}`,
       invoiceNumber,
       sekolahMitra,
       jumlah,
@@ -564,8 +604,8 @@ export default function App() {
     };
     setInvoices((prev) => [newInv, ...prev]);
 
-    // Push back dynamically to Google Sheet
-    // Columns: Invoice, Sekolah Mitra, Bulan , Tahun, Status Invoice, Tanggal Kirim, Tanggal Bayar , Tagihan Full, Tagihan Realisasi , Pembayaran, Status Payment
+    saveChangeLocally("invoice", newInv);
+
     writeToSpreadsheet("INV & PAYMENT FF", [
       [ invoiceNumber, sekolahMitra, "Manual Input", 2026, "TERKIRIM", tanggal, "", jumlah, jumlah, statusPay === "Lunas" ? jumlah : "", statusPay === "Lunas" ? "LUNAS" : "MENUNGGAK" ]
     ]);
@@ -591,17 +631,21 @@ export default function App() {
     };
     setRequests((prev) => [newReq, ...prev]);
 
-    // Push back dynamically to Google Sheet
-    // Columns: Sekolah, Request, Tanggal Masuk, Tanggal Selesai, Status, Tipe
+    saveChangeLocally("request", newReq);
+
     writeToSpreadsheet("REQUEST MITRA", [
       [ defaultSchool, deskripsi, tglToday, "", session.role === "admin" ? "Setuju" : "Menunggu", tipe ]
     ]);
   };
 
   const handleUpdateRequestStatus = (id: string, newStatus: "Setuju" | "Ditolak") => {
+    const reqItem = requests.find(r => r.id === id);
+    if (!reqItem) return;
+    const updatedReq = { ...reqItem, statusApproved: newStatus };
     setRequests((prev) =>
-      prev.map((req) => (req.id === id ? { ...req, statusApproved: newStatus } : req))
+      prev.map((r) => (r.id === id ? updatedReq : r))
     );
+    saveChangeLocally("request", updatedReq);
   };
 
   const handleCreateKPI = (newKpiData: Omit<KPIMitra, "id" | "progress">) => {
@@ -614,7 +658,8 @@ export default function App() {
     };
     setKpis((prev) => [finalKpi, ...prev]);
 
-    // Push back dynamically to Google Sheet KPI MITRA
+    saveChangeLocally("kpi", finalKpi);
+
     writeToSpreadsheet("KPI MITRA", [
       [
         newKpiData.idKpi,
@@ -646,6 +691,7 @@ export default function App() {
       deskripsi,
     };
     setEvents((prev) => [newEvt, ...prev]);
+    saveChangeLocally("event", newEvt);
   };
 
   const handleUpdateEvent = (
@@ -656,15 +702,18 @@ export default function App() {
     kategori: "Audit" | "Rapat Kurikulum" | "Bimtek" | "Lainnya",
     deskripsi: string
   ) => {
+    const updatedEvt = { id, namaEvent, tanggal, sekolahMitra, kategori, deskripsi };
     setEvents((prev) =>
       prev.map((evt) =>
-        evt.id === id ? { ...evt, namaEvent, tanggal, sekolahMitra, kategori, deskripsi } : evt
+        evt.id === id ? updatedEvt : evt
       )
     );
+    saveChangeLocally("event", updatedEvt);
   };
 
   const handleDeleteEvent = (id: string) => {
     setEvents((prev) => prev.filter((evt) => evt.id !== id));
+    saveChangeLocally("delete-event", { id });
   };
 
   const handleAddUser = (newUser: any) => {
@@ -1185,6 +1234,7 @@ export default function App() {
                         schools={schoolList}
                         session={session}
                         onCreateReport={handleCreateReport}
+                        onUpdateReportStatus={handleUpdateReportStatus}
                         onSelectSchool={(schoolName) => {
                           setSelectedSchool(schoolName);
                           setTimeout(() => {

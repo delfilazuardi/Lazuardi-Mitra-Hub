@@ -13,10 +13,15 @@ interface TableProps {
     statusLaporan: "Sudah Kirim" | "Belum Kirim",
     statusAudit: "Selesai" | "Revisi" | "Belum Diaudit" | "-"
   ) => void;
+  onUpdateReportStatus?: (
+    id: string,
+    statusLaporan: "Sudah Kirim" | "Belum Kirim",
+    statusAudit: "Selesai" | "Revisi" | "Belum Diaudit" | "-"
+  ) => void;
   onSelectSchool: (schoolName: string) => void;
 }
 
-export default function ReportTable({ records, schools, session, onCreateReport, onSelectSchool }: TableProps) {
+export default function ReportTable({ records, schools, session, onCreateReport, onUpdateReportStatus, onSelectSchool }: TableProps) {
   // Filters state
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSchool, setSelectedSchool] = useState("Semua");
@@ -257,34 +262,80 @@ export default function ReportTable({ records, schools, session, onCreateReport,
                       {r.tanggalKirim || <span className="text-slate-300">-</span>}
                     </td>
                     <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                          isSent
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200/40"
-                            : "bg-rose-50 text-rose-700 border border-rose-200/40"
-                        }`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${isSent ? "bg-emerald-500" : "bg-rose-500"}`} />
-                        {r.statusLaporan}
-                      </span>
+                      {session.role === "admin" && onUpdateReportStatus ? (
+                        <select
+                          value={r.statusLaporan}
+                          onChange={(e) => {
+                            const newLaporan = e.target.value as "Sudah Kirim" | "Belum Kirim";
+                            let newAudit = r.statusAudit;
+                            if (newLaporan === "Sudah Kirim" && r.statusAudit === "-") {
+                              newAudit = "Belum Diaudit";
+                            } else if (newLaporan === "Belum Kirim") {
+                              newAudit = "-";
+                            }
+                            onUpdateReportStatus(r.id, newLaporan, newAudit);
+                          }}
+                          className={`inline-block items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold outline-hidden border cursor-pointer transition-all ${
+                            isSent
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100/50"
+                              : "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100/50"
+                          }`}
+                        >
+                          <option value="Sudah Kirim">Sudah Kirim</option>
+                          <option value="Belum Kirim">Belum Kirim</option>
+                        </select>
+                      ) : (
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                            isSent
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200/40"
+                              : "bg-rose-50 text-rose-700 border border-rose-200/40"
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${isSent ? "bg-emerald-500" : "bg-rose-500"}`} />
+                          {r.statusLaporan}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 text-center">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                          isAuditDone
-                            ? "bg-teal-50 text-teal-700 border border-teal-200/40"
-                            : isAuditRevision
-                            ? "bg-amber-50 text-amber-700 border border-amber-200"
-                            : "bg-slate-100 text-slate-600 border border-slate-200/30"
-                        }`}
-                      >
-                        {isAuditDone ? (
-                          <Check className="w-3 h-3 text-teal-600" />
-                        ) : isAuditRevision ? (
-                          <AlertTriangle className="w-3 h-3 text-amber-600" />
-                        ) : null}
-                        {r.statusAudit}
-                      </span>
+                      {session.role === "admin" && onUpdateReportStatus ? (
+                        <select
+                          value={r.statusAudit}
+                          onChange={(e) => {
+                            const newAudit = e.target.value as "Selesai" | "Revisi" | "Belum Diaudit" | "-";
+                            onUpdateReportStatus(r.id, r.statusLaporan, newAudit);
+                          }}
+                          className={`inline-block items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold outline-hidden border cursor-pointer transition-all ${
+                            isAuditDone
+                              ? "bg-teal-50 text-teal-700 border-teal-200 hover:bg-teal-100/50"
+                              : isAuditRevision
+                              ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100/55"
+                              : "bg-slate-100 text-slate-600 border-slate-200/30 hover:bg-slate-200/50"
+                          }`}
+                        >
+                          <option value="-">-</option>
+                          <option value="Belum Diaudit">Belum Diaudit</option>
+                          <option value="Revisi">Revisi</option>
+                          <option value="Selesai">Selesai</option>
+                        </select>
+                      ) : (
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                            isAuditDone
+                              ? "bg-teal-50 text-teal-700 border border-teal-200/40"
+                              : isAuditRevision
+                              ? "bg-amber-50 text-amber-700 border border-amber-200"
+                              : "bg-slate-100 text-slate-600 border border-slate-200/30"
+                          }`}
+                        >
+                          {isAuditDone ? (
+                            <Check className="w-3 h-3 text-teal-600" />
+                          ) : isAuditRevision ? (
+                            <AlertTriangle className="w-3 h-3 text-amber-600" />
+                          ) : null}
+                          {r.statusAudit}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3.5 px-4 text-center">
                       <button
