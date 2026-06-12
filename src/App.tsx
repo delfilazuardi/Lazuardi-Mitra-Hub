@@ -78,8 +78,9 @@ export default function App() {
   // Users state
   const [users, setUsers] = useState<any[]>(() => {
     const saved = localStorage.getItem("laz_users");
-    if (saved) return JSON.parse(saved);
-    return [
+    const savedCustom = localStorage.getItem("laz_custom_users");
+    
+    const baseUsers = saved ? JSON.parse(saved) : [
       {
         id: "usr-1",
         username: "Pusat Lazuardi",
@@ -128,6 +129,15 @@ export default function App() {
         password: "mitra123"
       }
     ];
+
+    const customList = savedCustom ? JSON.parse(savedCustom) : [];
+    const merged = [...baseUsers];
+    customList.forEach((cUser: any) => {
+      if (!merged.some(u => u.email?.toLowerCase() === cUser.email?.toLowerCase())) {
+        merged.push(cUser);
+      }
+    });
+    return merged;
   });
 
   // Dynamic Categories
@@ -296,7 +306,17 @@ export default function App() {
       const usersRes = await fetch("/api/users-sync");
       const usersJson = await usersRes.json();
       if (usersJson.success && usersJson.data && usersJson.data.length > 0) {
-        setUsers(usersJson.data);
+        const savedCustom = localStorage.getItem("laz_custom_users");
+        const customList = savedCustom ? JSON.parse(savedCustom) : [];
+        const fetchedList = usersJson.data;
+        const merged = [...fetchedList];
+        
+        customList.forEach((cUser: any) => {
+          if (!merged.some(f => f.email?.toLowerCase() === cUser.email?.toLowerCase())) {
+            merged.push(cUser);
+          }
+        });
+        setUsers(merged);
       }
 
       // 5. Fetch KPIs
@@ -632,15 +652,51 @@ export default function App() {
   };
 
   const handleAddUser = (newUser: any) => {
-    setUsers((prev) => [...prev, newUser]);
+    // 1. Update state
+    setUsers((prev) => {
+      if (prev.some(u => u.email?.toLowerCase() === newUser.email?.toLowerCase())) {
+        return prev;
+      }
+      return [...prev, newUser];
+    });
+
+    // 2. Persist in local storage
+    const savedCustom = localStorage.getItem("laz_custom_users");
+    const customList = savedCustom ? JSON.parse(savedCustom) : [];
+    if (!customList.some((u: any) => u.email?.toLowerCase() === newUser.email?.toLowerCase())) {
+      const updatedCustom = [...customList, newUser];
+      localStorage.setItem("laz_custom_users", JSON.stringify(updatedCustom));
+    }
+
+    // 3. Write back of row to the Google Spreadsheet sheet: "LOGIN" if token exists
+    // Headers: ID User, Nama, Email,  Password , Role, Akses, Status
+    const extRole = newUser.role === "admin" ? "Officer" : "Bendahara";
+    const extAccess = newUser.sekolahName || "";
+    writeToSpreadsheet("LOGIN", [
+      [ newUser.id, newUser.username, newUser.email, newUser.password, extRole, extAccess, "Aktif" ]
+    ]);
   };
 
   const handleEditUser = (id: string, updated: any) => {
     setUsers((prev) => prev.map((u) => (u.id === id ? updated : u)));
+
+    const savedCustom = localStorage.getItem("laz_custom_users");
+    if (savedCustom) {
+      const customList = JSON.parse(savedCustom);
+      const updatedCustom = customList.map((u: any) => (u.id === id ? updated : u));
+      localStorage.setItem("laz_custom_users", JSON.stringify(updatedCustom));
+    }
   };
 
   const handleDeleteUser = (id: string) => {
     setUsers((prev) => prev.filter((u) => u.id !== id));
+
+    const savedCustom = localStorage.getItem("laz_custom_users");
+    if (savedCustom) {
+      const customList = JSON.parse(savedCustom);
+      const updatedCustom = customList.filter((u: any) => u.id !== id);
+      localStorage.setItem("laz_custom_users", JSON.stringify(updatedCustom));
+    }
   };
 
   // If user is not logged in, prompt the Login Screen beautifully
