@@ -103,14 +103,33 @@ export default function LoginScreen({
     }
 
     const inputIdentifier = email.trim().toLowerCase();
-    const match = users.find(
-      (u) =>
-        (u.email?.toLowerCase() === inputIdentifier ||
-         u.username?.toLowerCase() === inputIdentifier ||
-         u.id?.toLowerCase() === inputIdentifier ||
-         (u.sekolahName && u.sekolahName.toLowerCase() === inputIdentifier)) &&
-        String(u.password).trim() === password.trim()
-    );
+    const cleanPassword = password.trim();
+
+    const match = users.find((u) => {
+      const matchPass = String(u.password).trim() === cleanPassword;
+      if (!matchPass) return false;
+
+      // Extract parts to make email prefix matching extremely robust
+      const inputPrefix = inputIdentifier.split("@")[0].replace(/[._-]/g, "");
+      const userEmailPrefix = u.email ? u.email.toLowerCase().split("@")[0].replace(/[._-]/g, "") : "";
+      const userUsernameClean = u.username ? u.username.toLowerCase().replace(/[\s._-]/g, "") : "";
+      const userIdClean = u.id ? u.id.toLowerCase().replace(/[._-]/g, "") : "";
+
+      const primaryMatch = (
+        u.email?.toLowerCase() === inputIdentifier ||
+        u.username?.toLowerCase() === inputIdentifier ||
+        u.id?.toLowerCase() === inputIdentifier
+      );
+
+      const prefixMatch = (
+        (userEmailPrefix && (inputPrefix.includes(userEmailPrefix) || userEmailPrefix.includes(inputPrefix))) ||
+        (userUsernameClean && (inputPrefix.includes(userUsernameClean) || userUsernameClean.includes(inputPrefix))) ||
+        (userIdClean && (inputPrefix.includes(userIdClean) || userIdClean.includes(inputPrefix)))
+      );
+
+      return primaryMatch || prefixMatch || (u.sekolahName && u.sekolahName.toLowerCase() === inputIdentifier);
+    });
+
     if (match) {
       onLoginSuccess({
         username: match.username,
@@ -330,9 +349,13 @@ export default function LoginScreen({
                 </label>
                 <input
                   type="email"
-                  readOnly
                   value={email}
-                  className="w-full px-3 py-2.5 text-xs bg-slate-50 border border-slate-200/80 rounded-xl text-slate-500 font-mono focus:outline-none"
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setErrorMsg("");
+                  }}
+                  className="w-full px-3 py-2.5 text-xs bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200/80 rounded-xl text-slate-700 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/10 focus:border-blue-900 transition-all"
+                  placeholder="name@lazuardi.com"
                 />
               </div>
 
