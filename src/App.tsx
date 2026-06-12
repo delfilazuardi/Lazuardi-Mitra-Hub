@@ -16,7 +16,9 @@ import MitraComplianceTracker from "./components/MitraComplianceTracker";
 import UserManagement from "./components/UserManagement";
 import CategoryManagement from "./components/CategoryManagement";
 import KPIMitraView from "./components/KPIMitraView";
+import SidebarModulesSummary from "./components/SidebarModulesSummary";
 import { translations } from "./utils/translations";
+import { getInvoiceYear, getInvoiceAcademicYear } from "./utils/invoiceHelpers";
 import {
   GraduationCap,
   LayoutDashboard,
@@ -361,6 +363,7 @@ export default function App() {
     if (targetSource.length === 0) {
       return {
         totalMitra: 0,
+        totalAfiliasi: 0,
         totalLaporanKirim: 0,
         totalLaporanBelumKirim: 0,
         totalSelesai: 0,
@@ -370,8 +373,19 @@ export default function App() {
       };
     }
 
-    const uniqueSchools = Array.from(new Set(targetSource.map((r) => r.sekolahMitra)));
-    const totalMitra = uniqueSchools.length;
+    const uniqueSchools: string[] = Array.from(new Set(targetSource.map((r) => r.sekolahMitra)));
+    const PARTNER_LIST = ["Al-Falah Depok", "Al-Falah Klaten", "Athaillah", "Cordova", "Haura", "Kamila", "Ideal", "Tursina", "Ibnu Sina"];
+    const AFFILIATE_LIST = ["SMA Lazuardi"];
+
+    let totalMitra = uniqueSchools.filter(s => PARTNER_LIST.includes(s)).length;
+    let totalAfiliasi = uniqueSchools.filter(s => AFFILIATE_LIST.includes(s)).length;
+
+    if (session?.role !== "admin") {
+      const activeSchool = session?.sekolahName || "";
+      totalMitra = PARTNER_LIST.includes(activeSchool) ? 1 : 0;
+      totalAfiliasi = AFFILIATE_LIST.includes(activeSchool) ? 1 : 0;
+    }
+
     const totalLaporanKirim = targetSource.filter((r) => r.statusLaporan === "Sudah Kirim").length;
     const totalLaporanBelumKirim = targetSource.filter((r) => r.statusLaporan === "Belum Kirim").length;
     const totalSelesai = targetSource.filter((r) => r.statusAudit === "Selesai").length;
@@ -382,7 +396,8 @@ export default function App() {
     const persentaseKirim = relevantSlots > 0 ? Math.round((totalLaporanKirim / relevantSlots) * 100) : 0;
 
     return {
-      totalMitra: session?.role === "admin" ? totalMitra : 1, // Mitra evaluates only 1 school
+      totalMitra,
+      totalAfiliasi,
       totalLaporanKirim,
       totalLaporanBelumKirim,
       totalSelesai,
@@ -426,14 +441,10 @@ export default function App() {
     let list = invoices;
     if (overviewYear !== "Semua") {
       const yr = parseInt(overviewYear);
-      list = list.filter((i) => i.tahun === yr);
+      list = list.filter((i) => getInvoiceYear(i) === yr);
     }
     if (overviewAcademicYear !== "Semua") {
-      const [startYrStr, endYrStr] = overviewAcademicYear.split("/");
-      const startYear = parseInt(startYrStr);
-      const endYear = parseInt(endYrStr);
-      
-      list = list.filter((i) => i.tahun === startYear || i.tahun === endYear);
+      list = list.filter((i) => getInvoiceAcademicYear(i) === overviewAcademicYear);
     }
     return list;
   }, [invoices, overviewYear, overviewAcademicYear]);
@@ -457,6 +468,7 @@ export default function App() {
     if (targetSource.length === 0) {
       return {
         totalMitra: 0,
+        totalAfiliasi: 0,
         totalLaporanKirim: 0,
         totalLaporanBelumKirim: 0,
         totalSelesai: 0,
@@ -467,7 +479,19 @@ export default function App() {
     }
 
     const uniqueSchools = Array.from(new Set(targetSource.map((r) => r.sekolahMitra)));
-    const totalMitra = uniqueSchools.length;
+    const PARTNER_LIST = ["Al-Falah Depok", "Al-Falah Klaten", "Athaillah", "Cordova", "Haura", "Kamila", "Ideal", "Tursina", "Ibnu Sina"];
+    const AFFILIATE_LIST = ["SMA Lazuardi"];
+
+    // Admin dashboard shows all 9 and 1 respectively as the total capacity domains
+    let totalMitra = PARTNER_LIST.length; 
+    let totalAfiliasi = AFFILIATE_LIST.length;
+
+    if (session?.role !== "admin") {
+      const activeSchool = session?.sekolahName || "";
+      totalMitra = PARTNER_LIST.includes(activeSchool) ? 1 : 0;
+      totalAfiliasi = AFFILIATE_LIST.includes(activeSchool) ? 1 : 0;
+    }
+
     const totalLaporanKirim = targetSource.filter((r) => r.statusLaporan === "Sudah Kirim").length;
     const totalLaporanBelumKirim = targetSource.filter((r) => r.statusLaporan === "Belum Kirim").length;
     const totalSelesai = targetSource.filter((r) => r.statusAudit === "Selesai").length;
@@ -478,7 +502,8 @@ export default function App() {
     const persentaseKirim = relevantSlots > 0 ? Math.round((totalLaporanKirim / relevantSlots) * 100) : 0;
 
     return {
-      totalMitra: session?.role === "admin" ? totalMitra : 1,
+      totalMitra,
+      totalAfiliasi,
       totalLaporanKirim,
       totalLaporanBelumKirim,
       totalSelesai,
@@ -1068,7 +1093,7 @@ export default function App() {
               {activeTab === "overview" && session.role === "admin" && (
                 <div className="space-y-6 animated-fade-in">
                   {/* Summary Metric Cards */}
-                  <ReportStats stats={overviewStats} />
+                  <ReportStats stats={overviewStats} records={filteredOverviewRecords} session={session} lang={lang} />
                   
                   {/* Performance charts */}
                   <div className="bg-white border border-slate-200/80 p-6 rounded-3xl shadow-xs">
@@ -1081,6 +1106,21 @@ export default function App() {
                     records={filteredOverviewRecords}
                     invoices={filteredOverviewInvoices}
                     events={filteredOverviewEvents}
+                  />
+
+                  {/* Sidebar Items Summary Center requested by user */}
+                  <SidebarModulesSummary
+                    session={session}
+                    lang={lang}
+                    records={records}
+                    invoices={invoices}
+                    requests={requests}
+                    events={events}
+                    kpis={kpis}
+                    users={users}
+                    requestCategoriesCount={requestCategories.length}
+                    eventCategoriesCount={eventCategories.length}
+                    onNavigate={(tabId) => setActiveTab(tabId)}
                   />
 
                   {/* AI Assistant & Controller Info Center placed at the BOTTOM */}
@@ -1112,6 +1152,21 @@ export default function App() {
                     events={filteredOverviewEvents}
                     session={session}
                   />
+
+                  {/* Sidebar Items Summary Center requested by user */}
+                  <SidebarModulesSummary
+                    session={session}
+                    lang={lang}
+                    records={records}
+                    invoices={invoices}
+                    requests={requests}
+                    events={events}
+                    kpis={kpis}
+                    users={users}
+                    requestCategoriesCount={requestCategories.length}
+                    eventCategoriesCount={eventCategories.length}
+                    onNavigate={(tabId) => setActiveTab(tabId)}
+                  />
                 </div>
               )}
 
@@ -1119,7 +1174,7 @@ export default function App() {
               {activeTab === "reports" && (
                 <div className="space-y-6 animated-fade-in">
                   {/* Simple stats localized to scope */}
-                  <ReportStats stats={stats} />
+                  <ReportStats stats={stats} records={isolatedRecords} session={session} lang={lang} />
 
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
                     

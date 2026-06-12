@@ -10,6 +10,7 @@ export interface ReportRecord {
 
 export interface DashboardStats {
   totalMitra: number;
+  totalAfiliasi?: number;
   totalLaporanKirim: number;
   totalLaporanBelumKirim: number;
   totalSelesai: number;

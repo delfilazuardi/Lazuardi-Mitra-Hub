@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from "react";
 import { Invoice, UserSession } from "../types";
-import { FileText, Search, CreditCard, Check, AlertCircle, TrendingUp, DollarSign, ArrowUpRight, Plus, X } from "lucide-react";
+import { FileText, Search, CreditCard, Check, AlertCircle, TrendingUp, DollarSign, ArrowUpRight, Plus, X, Calendar, Award } from "lucide-react";
 import { motion } from "motion/react";
+import { getInvoiceYear, getInvoiceAcademicYear } from "../utils/invoiceHelpers";
 
 interface InvoiceProps {
   invoices: Invoice[];
@@ -21,6 +22,8 @@ interface InvoiceProps {
 export default function InvoiceList({ invoices, session, schools = [], onUpdateInvoiceStatus, onCreateInvoice }: InvoiceProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"Semua" | "Lunas" | "Belum Lunas">("Semua");
+  const [yearFilter, setYearFilter] = useState<string>("Semua");
+  const [academicYearFilter, setAcademicYearFilter] = useState<string>("Semua");
   const [paymentModalInvoice, setPaymentModalInvoice] = useState<Invoice | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
 
@@ -101,6 +104,18 @@ export default function InvoiceList({ invoices, session, schools = [], onUpdateI
       if (activeCategoryTab === "Renewal" && cat !== "Renewal") return false;
       if (activeCategoryTab === "Jenjang" && cat !== "Jenjang") return false;
 
+      // Year Filter
+      if (yearFilter !== "Semua") {
+        const invYear = getInvoiceYear(inv);
+        if (invYear !== parseInt(yearFilter)) return false;
+      }
+
+      // Academic Year Filter
+      if (academicYearFilter !== "Semua") {
+        const invAY = getInvoiceAcademicYear(inv);
+        if (invAY !== academicYearFilter) return false;
+      }
+
       // Text searching
       const matchSearch =
         inv.sekolahMitra.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -111,11 +126,20 @@ export default function InvoiceList({ invoices, session, schools = [], onUpdateI
 
       return matchSearch && matchStatus;
     });
-  }, [invoices, session, searchTerm, statusFilter, isMitra, userSchool, activeCategoryTab]);
+  }, [invoices, session, searchTerm, statusFilter, isMitra, userSchool, activeCategoryTab, yearFilter, academicYearFilter]);
 
   // Aggregate stats separated by Fee Categories
   const categoryStats = useMemo(() => {
-    const relevantInvoices = invoices.filter((inv) => !isMitra || inv.sekolahMitra === userSchool);
+    let relevantInvoices = invoices.filter((inv) => !isMitra || inv.sekolahMitra === userSchool);
+    
+    // Apply year and academic year filters on stats cards too so they are live and dynamic
+    if (yearFilter !== "Semua") {
+      const yrVal = parseInt(yearFilter);
+      relevantInvoices = relevantInvoices.filter(inv => getInvoiceYear(inv) === yrVal);
+    }
+    if (academicYearFilter !== "Semua") {
+      relevantInvoices = relevantInvoices.filter(inv => getInvoiceAcademicYear(inv) === academicYearFilter);
+    }
     
     const getStatsList = (list: Invoice[]) => {
       const totalTagihan = list.reduce((sum, item) => sum + item.jumlah, 0);
@@ -135,7 +159,7 @@ export default function InvoiceList({ invoices, session, schools = [], onUpdateI
       jenjang: getStatsList(jenjangList),
       all: getStatsList(relevantInvoices)
     };
-  }, [invoices, isMitra, userSchool]);
+  }, [invoices, isMitra, userSchool, yearFilter, academicYearFilter]);
 
   const formatRupiah = (val: number) => {
     return new Intl.NumberFormat("id-ID", {
@@ -389,16 +413,56 @@ export default function InvoiceList({ invoices, session, schools = [], onUpdateI
           </div>
         </div>
 
-        {/* Search input to browse */}
-        <div className="mb-4 relative">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-          <input
-            type="text"
-            placeholder={isMitra ? "Cari nomor invoice atau uraian..." : "Cari mitra sekolah, nomor invoice, atau uraian..."}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200/60 rounded-xl outline-hidden focus:ring-2 focus:ring-blue-500/10 focus:border-blue-900 transition-all font-medium text-slate-700"
-          />
+        {/* Search & Period Selectors */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 mb-6">
+          <div className="relative md:col-span-6">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+            <input
+              type="text"
+              placeholder={isMitra ? "Cari nomor invoice atau uraian..." : "Cari mitra sekolah, nomor invoice, atau uraian..."}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 hover:bg-slate-100/50 focus:bg-white border border-slate-200/60 rounded-xl outline-hidden focus:ring-2 focus:ring-blue-500/10 focus:border-blue-900 transition-all font-medium text-slate-700"
+            />
+          </div>
+          
+          {/* Year Selector */}
+          <div className="bg-slate-50 border border-slate-200/60 py-1.5 px-3 rounded-xl flex items-center gap-2 text-xs md:col-span-3">
+            <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
+            <span className="font-bold text-slate-500 shrink-0">Tahun:</span>
+            <select
+              value={yearFilter}
+              onChange={(e) => setYearFilter(e.target.value)}
+              className="font-extrabold text-blue-950 bg-transparent border-none focus:outline-hidden focus:ring-0 cursor-pointer text-xs w-full"
+            >
+              <option value="Semua">Semua Tahun</option>
+              <option value="2022">2022</option>
+              <option value="2023">2023</option>
+              <option value="2024">2024</option>
+              <option value="2025">2025</option>
+              <option value="2026">2026</option>
+              <option value="2027">2027</option>
+            </select>
+          </div>
+
+          {/* Academic Year Selector */}
+          <div className="bg-slate-50 border border-slate-200/60 py-1.5 px-3 rounded-xl flex items-center gap-2 text-xs md:col-span-3">
+            <Award className="w-4 h-4 text-slate-400 shrink-0" />
+            <span className="font-bold text-slate-500 shrink-0">TA:</span>
+            <select
+              value={academicYearFilter}
+              onChange={(e) => setAcademicYearFilter(e.target.value)}
+              className="font-extrabold text-blue-950 bg-transparent border-none focus:outline-hidden focus:ring-0 cursor-pointer text-xs w-full"
+            >
+              <option value="Semua">Semua TA</option>
+              <option value="2022/2023">2022/2023</option>
+              <option value="2023/2024">2023/2024</option>
+              <option value="2024/2025">2024/2025</option>
+              <option value="2025/2026">2025/2026</option>
+              <option value="2026/2027">2026/2027</option>
+              <option value="2027/2028">2027/2028</option>
+            </select>
+          </div>
         </div>
 
         {/* Invoice Lists Table */}
