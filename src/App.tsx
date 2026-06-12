@@ -52,19 +52,10 @@ export default function App() {
   const t = translations[lang];
 
   // Authentication & session state
-  const [session, setSession] = useState<UserSession | null>(() => {
-    const saved = localStorage.getItem("laz_session");
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [session, setSession] = useState<UserSession | null>(null);
 
   // Sidebar navigation tabs
-  const [activeTab, setActiveTab] = useState<string>(() => {
-    const savedSession = localStorage.getItem("laz_session");
-    if (savedSession) {
-      return "overview";
-    }
-    return "overview";
-  });
+  const [activeTab, setActiveTab] = useState<string>("overview");
 
   // Mobile sidebar open/close state
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
